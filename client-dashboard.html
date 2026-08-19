@@ -394,7 +394,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { auth, profiles, projects, requirements, assignments, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=8";
+import { auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=9";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1003,12 +1003,13 @@ async function openDetail(projectId) {
     // preview is scored live and writes nothing; matched is the committed
     // ledger. Both are fetched because they answer different questions:
     // "who exists" and "who have we actually approached".
-    const [all, matched, escrow, preview, engaged] = await Promise.all([
+    const [all, matched, escrow, preview, engaged, given] = await Promise.all([
       projects.mine(),
       matches.forProject(projectId),
       milestones.forProject(projectId),
       matches.preview(projectId).catch(() => []),
       assignments.forProject(projectId).catch(() => []),
+      ratings.mineAsPlant().catch(() => ({})),
     ]);
 
     const p = all.find((row) => row.id === projectId);
@@ -1071,6 +1072,17 @@ async function openDetail(projectId) {
                   class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700">
                   <i class="fas fa-check"></i> Confirm completion</button>` : ""}
               ${done ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700"><i class="fas fa-circle-check"></i> Completed</span>` : ""}
+              ${done ? `
+              <div class="w-full mt-1 flex flex-wrap items-center gap-2" data-rate-row="${a.id}">
+                <span class="text-xs text-slate-500">${given[a.id] ? "Your rating" : "Rate this professional"}</span>
+                <span class="inline-flex gap-0.5" role="radiogroup" aria-label="Rate 1 to 5 stars">
+                  ${[1,2,3,4,5].map((n) => `<button type="button" data-rate="${a.id}" data-stars="${n}"
+                      class="text-lg leading-none ${given[a.id] && n <= given[a.id].stars ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}"
+                      aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}
+                </span>
+                ${given[a.id]?.comment ? `<span class="text-xs text-slate-400 truncate max-w-[40ch]">“${esc(given[a.id].comment)}”</span>` : ""}
+                <span data-rate-msg="${a.id}" class="text-xs"></span>
+              </div>` : ""}
             </div>`;
           }).join("")}
         </div>
@@ -1152,6 +1164,26 @@ document.addEventListener("click", async (event) => {
       RoboMonitor.captureException(error, { operation: "rematch" });
       rematch.disabled = false;
       rematch.innerHTML = '<i class="fas fa-paper-plane"></i> Shortlist &amp; alert';
+    }
+    return;
+  }
+
+  const rate = event.target.closest("[data-rate]");
+  if (rate) {
+    const id = rate.dataset.rate, stars = Number(rate.dataset.stars);
+    const msg = document.querySelector(`[data-rate-msg="${id}"]`);
+    const comment = prompt(`${stars} star${stars === 1 ? "" : "s"}. Anything the professional should hear? (optional — they see the words, never your name)`, "");
+    if (comment === null) return;   // cancelled
+    try {
+      await ratings.rate(id, stars, comment.trim() || null);
+      // repaint the stars in place
+      document.querySelectorAll(`[data-rate="${id}"]`).forEach((b) => {
+        b.className = `text-lg leading-none ${Number(b.dataset.stars) <= stars ? "text-amber-500" : "text-slate-300 hover:text-amber-400"}`;
+      });
+      if (msg) { msg.textContent = "Thanks — recorded."; msg.className = "text-xs text-green-700"; }
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "rate" });
+      if (msg) { msg.textContent = error instanceof ApiError ? error.message : "Could not save the rating."; msg.className = "text-xs text-red-600"; }
     }
     return;
   }

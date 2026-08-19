@@ -1156,3 +1156,35 @@ export const billing = {
     return this.mine();
   },
 };
+
+
+// ---------------------------------------------------------------------------
+// Ratings — one per completed assignment, by the hiring plant (027).
+// ---------------------------------------------------------------------------
+export const ratings = {
+  /** Rate (or re-rate) a completed assignment. Returns the professional's new reliability score. */
+  async rate(assignmentId, stars, comment = null) {
+    const { data, error } = await supabase.rpc("rate_assignment", {
+      p_assignment_id: assignmentId, p_stars: stars, p_comment: comment,
+    });
+    if (error) fail(error, "ratings.rate");
+    return data;
+  },
+  /** Ratings the signed-in plant has given, keyed by assignment id. */
+  async mineAsPlant() {
+    const user = await auth.currentUser();
+    if (!user) return {};
+    const { data, error } = await supabase
+      .from("assignment_ratings")
+      .select("assignment_id, stars, comment, updated_at");
+    if (error) fail(error, "ratings.mineAsPlant");
+    return Object.fromEntries((data ?? []).map((r) => [r.assignment_id, r]));
+  },
+  /** Ratings received by the signed-in professional — stars and project, never the rater. */
+  async mineAsProfessional() {
+    const { data, error } = await supabase
+      .from("my_ratings").select("*").order("created_at", { ascending: false });
+    if (error) fail(error, "ratings.mineAsProfessional");
+    return data ?? [];
+  },
+};
