@@ -517,7 +517,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=7";
+import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=8";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1235,7 +1235,9 @@ function renderWork(entries) {
   }
 
   $("workList").innerHTML = entries.map((w) => {
-    const pill = VERIFY_PILL[w.verified_status] ?? VERIFY_PILL.self_declared;
+    const pill = w.assignment_id && w.verified_status === "verified"
+      ? { label: "Verified by plant", cls: "bg-green-50 text-green-700", icon: "fa-building-circle-check" }
+      : (VERIFY_PILL[w.verified_status] ?? VERIFY_PILL.self_declared);
     return `
       <div class="p-3 bg-white border-2 border-slate-200 rounded-xl">
         <div class="flex items-start gap-2">

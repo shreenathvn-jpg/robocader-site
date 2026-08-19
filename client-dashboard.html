@@ -394,7 +394,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { auth, profiles, projects, requirements, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=7";
+import { auth, profiles, projects, requirements, assignments, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=8";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -988,7 +988,9 @@ async function loadProjects() {
   }
 }
 
+let currentProjectId = null;
 async function openDetail(projectId) {
+  currentProjectId = projectId;
   $("listView").classList.add("hidden");
   $("detailView").classList.remove("hidden");
   window.scrollTo(0, 0);
@@ -1001,11 +1003,12 @@ async function openDetail(projectId) {
     // preview is scored live and writes nothing; matched is the committed
     // ledger. Both are fetched because they answer different questions:
     // "who exists" and "who have we actually approached".
-    const [all, matched, escrow, preview] = await Promise.all([
+    const [all, matched, escrow, preview, engaged] = await Promise.all([
       projects.mine(),
       matches.forProject(projectId),
       milestones.forProject(projectId),
       matches.preview(projectId).catch(() => []),
+      assignments.forProject(projectId).catch(() => []),
     ]);
 
     const p = all.find((row) => row.id === projectId);
@@ -1050,6 +1053,29 @@ async function openDetail(projectId) {
                  <p class="text-xs text-slate-400 mt-1">We are still building the professional pool in your area.</p>
                </div>`}
       </div>
+
+      ${engaged.length ? `
+      <div>
+        <h3 class="text-sm font-bold text-slate-800 mb-3">Professionals on this project</h3>
+        <div class="space-y-2">
+          ${engaged.map((a) => {
+            const done = a.status === "completed";
+            const live = ["accepted","client_confirmed","deployment_ready","deployed","in_progress","paused"].includes(a.status);
+            return `
+            <div class="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap items-center gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-slate-800 num">${esc(formatSpan(a.starts_on, a.ends_on, false))}</p>
+                <p class="text-xs text-slate-500">${done ? "Signed off — a verified entry is now on their passport." : esc(a.status.replace(/_/g, " "))}</p>
+              </div>
+              ${live ? `<button data-signoff="${a.id}"
+                  class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700">
+                  <i class="fas fa-check"></i> Confirm completion</button>` : ""}
+              ${done ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700"><i class="fas fa-circle-check"></i> Completed</span>` : ""}
+            </div>`;
+          }).join("")}
+        </div>
+        <p class="text-[11px] text-slate-400 mt-2">Confirming completion records this work on the professional's passport as <strong>verified by you</strong>. It cannot be undone.</p>
+      </div>` : ""}
 
       <div>
         <div class="flex items-center justify-between mb-3">
@@ -1126,6 +1152,28 @@ document.addEventListener("click", async (event) => {
       RoboMonitor.captureException(error, { operation: "rematch" });
       rematch.disabled = false;
       rematch.innerHTML = '<i class="fas fa-paper-plane"></i> Shortlist &amp; alert';
+    }
+    return;
+  }
+
+  const signoff = event.target.closest("[data-signoff]");
+  if (signoff) {
+    const ok = confirm(
+      "Confirm this professional has completed the work?\n\n" +
+      "This marks the assignment complete and writes a verified entry on their Skill Passport, in your company's name. It cannot be undone."
+    );
+    if (!ok) return;
+    signoff.disabled = true;
+    signoff.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recording…';
+    try {
+      await assignments.signOff(signoff.dataset.signoff, null);
+      await openDetail(currentProjectId);
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "signOff" });
+      // The database's refusal is the business answer — show it verbatim.
+      alert(error instanceof ApiError ? error.message : "Could not record the sign-off. Please try again.");
+      signoff.disabled = false;
+      signoff.innerHTML = '<i class="fas fa-check"></i> Confirm completion';
     }
     return;
   }

@@ -422,7 +422,7 @@ export const skills = {
 
 const WORK_COLUMNS =
   "id, technician_id, plant_name, client_company, role_title, location_city, " +
-  "started_on, ended_on, is_current, summary, skills_used, verified_status";
+  "started_on, ended_on, is_current, summary, skills_used, verified_status, assignment_id";
 
 export const workHistory = {
   async mine() {
@@ -927,27 +927,42 @@ export const assignments = {
     return data;
   },
 
-  /** My assignments. client_day_rate is hidden by column grant. */
+  /**
+   * My assignments, with MY payout. Read from the owner-rights view
+   * my_assignments (026): the payout columns are not readable on the table,
+   * because a plant can read its project's assignment rows and must never
+   * see what the professional is paid.
+   */
   async mine() {
     const user = await auth.currentUser();
     if (!user) return [];
     const { data, error } = await supabase
-      .from("assignments")
-      .select(
-        "id, requirement_id, project_id, status, agreed_day_rate, " +
-        "agreed_ot_hour_rate, starts_on, ends_on, offered_at, accepted_at, " +
-        "client_confirmed_at, deployed_at, completed_at",
-      )
-      .eq("technician_id", user.id)
+      .from("my_assignments")
+      .select("*")
       .order("starts_on", { ascending: false });
     if (error) fail(error, "assignments.mine");
     return data ?? [];
   },
 
+  /**
+   * The plant (project owner) or an admin confirms the work is done. The
+   * database sets the assignment to completed AND writes a client-VERIFIED
+   * entry on the professional's passport (025) — the career record that no
+   * self-written CV can match. Idempotent. Returns the work_history id.
+   */
+  async signOff(assignmentId, note = null) {
+    const { data, error } = await supabase.rpc("sign_off_assignment", {
+      p_assignment_id: assignmentId,
+      p_note: note,
+    });
+    if (error) fail(error, "assignments.signOff");
+    return data;
+  },
+
   async forProject(projectId) {
     const { data, error } = await supabase
       .from("assignments")
-      .select("id, requirement_id, technician_id, status, agreed_day_rate, starts_on, ends_on, accepted_at")
+      .select("id, requirement_id, technician_id, status, starts_on, ends_on, accepted_at, completed_at")
       .eq("project_id", projectId)
       .order("accepted_at", { ascending: false });
     if (error) fail(error, "assignments.forProject");

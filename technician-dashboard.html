@@ -140,7 +140,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, passports, skills as skillsApi, technician, assignments, ApiError } from "/js/api.js?v=7";
+import { auth, profiles, passports, skills as skillsApi, technician, assignments, ApiError } from "/js/api.js?v=8";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -417,8 +417,9 @@ async function renderRoles() {
          return `
            <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-3">
              <div class="min-w-0 flex-1">
-               <p class="text-sm font-medium text-slate-800">${esc(span(a.starts_on, a.ends_on))}</p>
-               <p class="text-xs text-slate-500 num">${inr.format(a.agreed_day_rate)}/day &middot; locked when you accepted</p>
+               <p class="text-sm font-medium text-slate-800">${esc(a.role_title ?? "Assignment")}${a.project_title ? ` · <span class="text-slate-500 font-normal">${esc(a.project_title)}</span>` : ""}</p>
+               <p class="text-xs text-slate-500 num">${esc(span(a.starts_on, a.ends_on))} &middot; ${inr.format(a.agreed_day_rate)}/day &middot; locked when you accepted</p>
+               ${a.status === "completed" ? `<p class="text-[11px] text-green-700 mt-0.5"><i class="fas fa-circle-check"></i> Signed off by the plant — this is now a verified entry on your passport.</p>` : ""}
              </div>
              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}">${label}</span>
            </div>`;
