@@ -86,7 +86,10 @@
         <p class="font-bold leading-tight">Operations</p>
         <p class="text-xs text-slate-500 leading-tight" id="whoami"></p>
       </div>
-      <button id="refreshBtn" class="ml-auto text-sm text-slate-500 hover:text-slate-900">
+      <label class="ml-auto flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+        <input type="checkbox" id="showArchived" class="accent-slate-700"> Show archived
+      </label>
+      <button id="refreshBtn" class="text-sm text-slate-500 hover:text-slate-900">
         <i class="fas fa-rotate"></i> Refresh
       </button>
       <button id="signOutBtn" class="text-sm text-slate-500 hover:text-slate-900">Sign out</button>
@@ -207,7 +210,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=9";
+import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=10";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "admin" });
@@ -280,15 +283,28 @@ const VERIFY = {
   rejected: "bg-red-50 text-red-700",
 };
 
+
+// ---------- archive (028) ----------
+const showArchived = () => $("showArchived").checked;
+const notArchived = (rows) => showArchived() ? rows : rows.filter((r) => !r.archived_at);
+function archiveBtn(kind, row) {
+  return row.archived_at
+    ? `<button data-archive="${kind}" data-id="${row.id}" data-restore="1" title="Archived ${esc(String(row.archived_at).slice(0,10))}${row.archive_reason ? " — " + esc(row.archive_reason) : ""}"
+         class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-semibold hover:bg-amber-100"><i class="fas fa-box-open"></i> Restore</button>`
+    : `<button data-archive="${kind}" data-id="${row.id}"
+         class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200" title="Hide from operations and matching. Nothing is deleted."><i class="fas fa-box-archive"></i> Archive</button>`;
+}
+
 function renderTechnicians() {
-  if (!cache.technicians.length) {
+  const rows = notArchived(cache.technicians);
+  if (!rows.length) {
     $("techList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No technicians registered yet.</div>`;
     return;
   }
-  $("techList").innerHTML = cache.technicians.map((t) => `
-    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4">
+  $("techList").innerHTML = rows.map((t) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4 ${t.archived_at ? "opacity-60" : ""}">
       <div class="min-w-0 flex-1">
-        <p class="font-semibold">${esc(t.full_name)}
+        <p class="font-semibold">${esc(t.full_name)}${t.passport_no ? ` <span class="ml-1 text-xs text-slate-400 num">${esc(t.passport_no)}</span>` : ""}
           <span class="ml-2 px-2 py-0.5 rounded-full text-[11px] font-semibold ${VERIFY[t.verified_status] ?? "bg-slate-100 text-slate-500"}">
             ${esc(t.verified_status ?? "no passport")}</span>
         </p>
@@ -305,6 +321,7 @@ function renderTechnicians() {
                 class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700">Verify</button>
         <button data-verify="${t.id}" data-status="rejected"
                 class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-red-50 hover:text-red-600">Reject</button>
+        ${archiveBtn("technician", t)}
       </div>
     </div>`).join("");
 }
@@ -366,12 +383,13 @@ function renderRequirements() {
 }
 
 function renderProjects() {
-  if (!cache.projects.length) {
+  const projRows = notArchived(cache.projects);
+  if (!projRows.length) {
     $("projList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No projects posted yet.</div>`;
     return;
   }
-  $("projList").innerHTML = cache.projects.map((p) => `
-    <div class="bg-white rounded-2xl shadow-sm p-4">
+  $("projList").innerHTML = projRows.map((p) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 ${p.archived_at ? "opacity-60" : ""}">
       <div class="flex flex-wrap items-start gap-3">
         <div class="min-w-0 flex-1">
           <p class="font-semibold">${esc(p.title)}
@@ -392,6 +410,7 @@ function renderProjects() {
                class="w-20 px-2 py-1 border-2 border-slate-200 rounded-lg text-sm num focus:border-blue-500 focus:outline-none">
         <span class="text-xs text-slate-500">%</span>
         <button data-margin="${p.id}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">Apply</button>
+        ${archiveBtn("project", p)}
       </div>
     </div>`).join("");
 }
@@ -403,12 +422,13 @@ const TS_STATUS = {
 };
 
 function renderTimesheets() {
-  if (!cache.timesheets.length) {
+  const tsRows = notArchived(cache.timesheets);
+  if (!tsRows.length) {
     $("tsList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No timesheets yet.</div>`;
     return;
   }
-  $("tsList").innerHTML = cache.timesheets.map((t) => `
-    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4">
+  $("tsList").innerHTML = tsRows.map((t) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4 ${t.archived_at ? "opacity-60" : ""}">
       <div class="min-w-0 flex-1">
         <p class="font-semibold text-sm">${esc(t.project_title)}
           <span class="ml-2 px-2 py-0.5 rounded-lg text-[11px] ${TS_STATUS[t.status] ?? ""}">${esc(t.status)}</span></p>
@@ -426,6 +446,7 @@ function renderTimesheets() {
         ${t.status === "approved"
           ? `<button data-invoice="${t.id}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">Invoice client</button>` : ""}
         <button data-advice="${t.id}" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200">Payment advice</button>
+        ${archiveBtn("timesheet", t)}
       </div>
     </div>`).join("");
 }
@@ -560,6 +581,24 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const arch = event.target.closest("[data-archive]");
+  if (arch) {
+    const kind = arch.dataset.archive, id = arch.dataset.id, restore = arch.dataset.restore === "1";
+    let reason = null;
+    if (!restore) {
+      reason = prompt(`Archive this ${kind}? It leaves operations and matching but nothing is deleted.\n\nReason (optional):`, "");
+      if (reason === null) return;
+    }
+    arch.disabled = true;
+    try { await admin.archive(kind, id, !restore, reason?.trim() || null); await loadAll(); }
+    catch (error) {
+      // "This project has 2 live assignment(s)…" — the refusal is the answer.
+      alert(error instanceof ApiError ? error.message : "Could not archive.");
+      arch.disabled = false;
+    }
+    return;
+  }
+
   const price = event.target.closest("[data-price]");
   if (price) {
     const id = price.dataset.price;
@@ -623,6 +662,7 @@ document.addEventListener("click", async (event) => {
 });
 
 $("refreshBtn").addEventListener("click", () => loadAll());
+$("showArchived").addEventListener("change", () => { renderTechnicians(); renderProjects(); renderTimesheets(); });
 
 // ---------- load ----------
 

@@ -503,10 +503,13 @@ export const projects = {
     const user = await auth.currentUser();
     if (!user) return [];
 
+    // Archived projects (028) are retired by InChi; the plant's list does not
+    // show them. Nothing is deleted — an admin can restore.
     const { data, error } = await supabase
       .from("projects")
       .select(PROJECT_COLUMNS)
       .eq("client_id", user.id)
+      .is("archived_at", null)
       .order("created_at", { ascending: false });
 
     if (error) fail(error, "projects.mine");
@@ -710,6 +713,17 @@ export const admin = {
       p_profile_id: profileId, p_new_role: newRole,
     });
     if (error) fail(error, "admin.demote");
+  },
+
+  /**
+   * Archive or restore (028). kind: 'project' | 'technician' | 'timesheet'.
+   * The database refuses live work and invoiced timesheets; show its words.
+   */
+  async archive(kind, id, archive = true, reason = null) {
+    const { error } = await supabase.rpc("admin_archive", {
+      p_kind: kind, p_id: id, p_archive: archive, p_reason: reason,
+    });
+    if (error) fail(error, "admin.archive");
   },
 
   /** Every role on every project, both prices, seats filled — admin only. */
