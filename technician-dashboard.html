@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Passport — RoboCADer Pro</title>
+
+<!--
+  THE PROFESSIONAL'S HOME.
+
+  Registration used to end at a card and there was nowhere to come back to,
+  which is what kills a talent pool between projects.
+
+  EVERY NUMBER ON THIS PAGE IS REAL. There are no profile views, no "seen by
+  12 recruiters", no fabricated activity. Where there is nothing yet, it says
+  so. Naukri can show search-appearance counts because it has recruiters
+  searching; we have none, and a made-up number would be the fastest way to
+  teach a technician that nothing here is trustworthy.
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  .num { font-variant-numeric: tabular-nums; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<script src="/js/config.js"></script>
+<script src="/js/monitoring.js"></script>
+<script src="/js/skill-tags.js?v=4"></script>
+</head>
+
+<body class="bg-slate-50 text-slate-800">
+
+<section id="gate" class="min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6 text-center">
+    <i class="fas fa-id-card text-3xl text-slate-300"></i>
+    <h1 class="text-lg font-bold mt-3">Sign in to see your passport</h1>
+    <p class="text-sm text-slate-500 mt-1.5">Your skills, your matching projects and your work record.</p>
+    <a href="/technician-onboard.html"
+       class="block mt-5 bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition">
+      Sign in or register
+    </a>
+  </div>
+</section>
+
+<div id="app" class="hidden">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
+      <a href="/index.html" class="flex items-center gap-2.5">
+        <div class="bg-slate-900 w-8 h-8 rounded-lg flex items-center justify-center">
+          <i class="fas fa-industry text-white text-[13px]"></i>
+        </div>
+        <span class="font-semibold tracking-tight hidden sm:inline">RoboCADer&nbsp;Pro</span>
+      </a>
+      <a href="/technician-onboard.html"
+         class="ml-auto text-sm text-slate-500 hover:text-slate-900"><i class="fas fa-pen"></i> Edit passport</a>
+      <button id="signOutBtn" class="text-sm text-slate-500 hover:text-slate-900">Sign out</button>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 grid lg:grid-cols-[300px_1fr] gap-6 items-start">
+
+    <!-- ================= profile column ================= -->
+    <aside class="space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm p-5 text-center">
+        <div class="relative w-24 h-24 mx-auto">
+          <svg viewBox="0 0 100 100" class="w-24 h-24 -rotate-90">
+            <circle cx="50" cy="50" r="44" fill="none" stroke="#E2E8F0" stroke-width="8"/>
+            <circle id="ring" cx="50" cy="50" r="44" fill="none" stroke="#2563EB" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="276" stroke-dashoffset="276"
+                    style="transition: stroke-dashoffset .6s ease"/>
+          </svg>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <i class="fas fa-user text-2xl text-slate-300"></i>
+          </div>
+        </div>
+        <p class="text-xs text-slate-400 mt-2 num"><span id="pctLabel">0</span>% complete</p>
+
+        <h1 id="myName" class="text-lg font-bold mt-2"></h1>
+        <p id="myMeta" class="text-xs text-slate-500 num"></p>
+
+        <div class="flex flex-wrap gap-1.5 justify-center mt-3" id="myBadges"></div>
+
+        <label class="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-slate-100 cursor-pointer">
+          <input type="checkbox" id="availToggle" class="w-4 h-4 accent-green-600">
+          <span class="text-sm text-slate-600">Available for work</span>
+        </label>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm p-5">
+        <p class="text-sm font-semibold mb-3">My skills</p>
+        <div id="mySkills" class="space-y-2"></div>
+        <div id="todo" class="mt-4 pt-4 border-t border-slate-100 space-y-1.5"></div>
+      </div>
+    </aside>
+
+    <!-- ================= main column ================= -->
+    <section>
+      <div class="flex gap-1 border-b border-slate-200 mb-5 overflow-x-auto">
+        <button data-tab="projects" class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">
+          Matching projects <span id="projCount" class="num text-slate-400"></span>
+        </button>
+        <button data-tab="roles" class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">
+          Offers <span id="roleCount" class="num text-slate-400"></span>
+        </button>
+        <button data-tab="qa" class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">
+          Q&amp;A <span id="qaCount" class="num text-slate-400"></span>
+        </button>
+      </div>
+
+      <div data-panel="projects">
+        <div id="projList" class="space-y-3"></div>
+      </div>
+
+      <!--
+        OFFERS. A role here is acceptable — priced, open, and shown with the
+        PAYOUT rate. Accepting is a real transaction: it creates an assignment
+        with that rate locked. So the button says what it does, and the
+        confirmation states the money before anything is committed.
+      -->
+      <div data-panel="roles" class="hidden">
+        <div id="myAssignments" class="mb-5"></div>
+        <div id="roleList" class="space-y-3"></div>
+      </div>
+
+      <div data-panel="qa" class="hidden">
+        <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+          <p class="text-sm font-semibold">Answer a few questions</p>
+          <p class="text-xs text-slate-500 mt-1">
+            These are the questions a plant head asks on a screening call. Answering them means
+            they already know before they ring you. One line each is plenty.
+          </p>
+        </div>
+        <div id="qaList" class="space-y-3"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import { auth, profiles, passports, skills as skillsApi, technician, assignments, ApiError } from "/js/api.js?v=7";
+import { questionsFor } from "/js/questions.js?v=4";
+
+const cfg = window.ROBOCADER_CONFIG ?? {};
+RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "technician-dashboard" });
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+
+const COMP = new Map((window.ROBOCADER_COMPETENCIES ?? []).map((c) => [c.tag, c]));
+const DETAIL_LABEL = new Map(
+  (window.ROBOCADER_COMPETENCIES ?? []).flatMap((c) => c.details.map((d) => [d.tag, d.label])),
+);
+const LEVEL_WORD = { L1: "Basic", L2: "Working", L3: "Advanced", L4: "Expert" };
+
+let me = null, passport = null, mySkills = [], answers = new Map();
+
+// ---------- tabs ----------
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((t) =>
+    t.className = `tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap ${
+      t.dataset.tab === name ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`);
+  document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+$("signOutBtn").addEventListener("click", async () => { await auth.signOut(); location.href = "/index.html"; });
+
+// ---------- profile ----------
+
+/**
+ * Completeness, weighted by what actually gets someone hired.
+ *
+ * Prior work is the heaviest single item because it is what a plant reads
+ * first, and answered questions are worth real weight because three tags and
+ * a rate tell a plant head almost nothing. The percentage is only useful if
+ * moving it actually improves your chances.
+ */
+function completeness() {
+  const items = [
+    { done: Boolean(me?.full_name),        weight: 10 },
+    { done: Boolean(me?.location_city),    weight: 10 },
+    { done: Boolean(me?.daily_rate),       weight: 10 },
+    { done: mySkills.length > 0,           weight: 15 },
+    { done: mySkills.length >= 2,          weight: 10 },
+    { done: Boolean(passport?.years_experience), weight: 5 },
+    { done: Boolean(passport?.certificate_url),  weight: 15 },
+    { done: (passport?.work_entries ?? 0) > 0,   weight: 15 },
+    { done: answers.size >= 3,             weight: 10 },
+  ];
+  const total = items.reduce((n, i) => n + i.weight, 0);
+  const got = items.filter((i) => i.done).reduce((n, i) => n + i.weight, 0);
+  return Math.round((got / total) * 100);
+}
+
+function renderProfile() {
+  const pct = completeness();
+  $("ring").style.strokeDashoffset = String(276 - (276 * pct) / 100);
+  $("pctLabel").textContent = pct;
+
+  $("myName").textContent = me?.full_name ?? "";
+  $("myMeta").textContent = [
+    me?.location_city,
+    me?.daily_rate ? `${inr.format(me.daily_rate)}/day` : null,
+    passport?.years_experience ? `${passport.years_experience} yrs` : null,
+  ].filter(Boolean).join(" · ");
+
+  const verified = passport?.verified_status === "verified";
+  $("myBadges").innerHTML = `
+    <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+      verified ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}">
+      <i class="fas fa-${verified ? "circle-check" : "id-card"}"></i> ${verified ? "Verified" : "Registered"}</span>
+    ${passport?.passport_no ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 num"
+      title="Your Passport ID. Plants see this — never your name or number — until RoboCADer confirms you on a project.">
+      <i class="fas fa-hashtag"></i> ${esc(passport.passport_no)}</span>` : ""}`;
+
+  $("availToggle").checked = Boolean(me?.availability_status);
+
+  $("mySkills").innerHTML = mySkills.length
+    ? mySkills.map((s) => {
+        const c = COMP.get(s.skill_tag);
+        const level = s.assessed_level ?? s.self_level;
+        return `
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-sm text-slate-700 min-w-0">${esc(c?.label ?? s.skill_tag.replace(/_/g, " "))}</span>
+            <span class="px-2 py-0.5 rounded-lg text-[11px] font-semibold shrink-0 num ${
+              s.assessed_level ? "bg-green-600 text-white" : "bg-blue-600 text-white"}"
+              title="${s.assessed_level ? "Confirmed by an assessor" : "Self-declared"}">
+              ${level} · ${LEVEL_WORD[level] ?? ""}</span>
+          </div>`;
+      }).join("")
+    : `<p class="text-xs text-slate-400">No skills declared yet.</p>`;
+
+  // Only things that genuinely raise your chances, in the order they matter.
+  const todo = [];
+  if (!(passport?.work_entries > 0)) todo.push(["Add a previous job", "Plants read this first", "/technician-onboard.html"]);
+  if (!passport?.certificate_url)    todo.push(["Upload your certificate", "ITI, diploma or training card", "/technician-onboard.html"]);
+  if (mySkills.length < 2)           todo.push(["Add a second skill", "More projects will reach you", "/technician-onboard.html"]);
+  if (answers.size < 3)              todo.push(["Answer 3 questions", "Takes two minutes", "#qa"]);
+
+  $("todo").innerHTML = todo.length
+    ? `<p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">To do</p>` +
+      todo.map(([label, why, href]) => `
+        <a href="${href}" data-goto-qa="${href === "#qa"}"
+           class="flex items-start gap-2 py-1 group">
+          <i class="fas fa-circle-plus text-blue-500 text-xs mt-1"></i>
+          <span class="min-w-0">
+            <span class="block text-xs font-medium text-slate-700 group-hover:text-blue-700">${label}</span>
+            <span class="block text-[11px] text-slate-400">${why}</span>
+          </span>
+        </a>`).join("")
+    : `<p class="text-xs text-green-700"><i class="fas fa-circle-check"></i> Your passport is complete.</p>`;
+}
+
+$("availToggle").addEventListener("change", async (event) => {
+  try {
+    await profiles.updateSelf({ availability_status: event.target.checked });
+    me.availability_status = event.target.checked;
+  } catch (error) {
+    event.target.checked = !event.target.checked;
+    RoboMonitor.captureException(error, { operation: "availability" });
+  }
+});
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest('[data-goto-qa="true"]');
+  if (link) { event.preventDefault(); showTab("qa"); window.scrollTo({ top: 0, behavior: "smooth" }); }
+});
+
+// ---------- projects ----------
+async function renderProjects() {
+  let rows = [];
+  try {
+    rows = await technician.matchingProjects();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "matchingProjects" });
+  }
+
+  $("projCount").textContent = rows.length ? `(${rows.length})` : "";
+
+  if (!rows.length) {
+    $("projList").innerHTML = `
+      <div class="bg-white rounded-2xl shadow-sm p-8 text-center">
+        <i class="fas fa-clipboard-list text-2xl text-slate-200"></i>
+        <p class="text-sm text-slate-600 mt-2 font-medium">No open projects match your skills right now</p>
+        <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+          We are still building the plant side. When a requirement matches you, it appears here
+          and we message you on WhatsApp — you do not need to keep checking.
+        </p>
+      </div>`;
+    return;
+  }
+
+  $("projList").innerHTML = rows.map((p) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <div class="flex items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-slate-800">${esc(p.title)}</p>
+          <p class="text-xs text-slate-500 num mt-0.5">
+            <i class="fas fa-location-dot text-slate-300"></i> ${esc(p.location_city ?? "—")}
+            ${p.distance_km ? ` · ${Math.round(p.distance_km)} km away` : ""}
+            · ${p.duration_days} days
+          </p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-xl font-bold text-blue-600 num leading-none">${Math.round(p.match_score)}</p>
+          <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mt-0.5">match</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-1 mt-3">
+        ${(p.matched_skills ?? []).map((t) =>
+          `<span class="px-2 py-0.5 rounded-md bg-blue-50 text-[11px] text-blue-700">${esc(COMP.get(t)?.label ?? t.replace(/_/g," "))}</span>`).join("")}
+        ${(p.missing_skills ?? []).map((t) =>
+          `<span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-400">${esc(COMP.get(t)?.label ?? t.replace(/_/g," "))} — not declared</span>`).join("")}
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+        ${p.meets_min_level
+          ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-green-50 text-green-700">Meets required level (${p.min_skill_level})</span>`
+          : `<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">Needs ${p.min_skill_level}</span>`}
+        ${p.already_matched
+          ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-blue-50 text-blue-700"><i class="fas fa-paper-plane"></i> You are shortlisted</span>` : ""}
+        ${p.my_indicative_earning
+          ? `<span class="ml-auto text-xs text-slate-500 num">≈ ${inr.format(p.my_indicative_earning)} at your rate</span>` : ""}
+      </div>
+    </div>`).join("");
+}
+
+// ---------- Q&A ----------
+function renderQA() {
+  const tags = mySkills.map((s) => s.skill_tag).filter((t) => COMP.has(t));
+  const questions = questionsFor(tags);
+
+  $("qaCount").textContent = `(${answers.size}/${questions.length})`;
+
+  $("qaList").innerHTML = questions.map((q) => {
+    const current = answers.get(q.key) ?? "";
+    return `
+      <div class="bg-white rounded-2xl shadow-sm p-4">
+        <div class="flex items-start gap-2">
+          <i class="fas fa-${current ? "circle-check text-green-500" : "circle text-slate-200"} mt-1 text-sm"></i>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-slate-800">${esc(q.prompt)}</p>
+            ${q.skillTag ? `<p class="text-[11px] text-slate-400 mt-0.5">${esc(COMP.get(q.skillTag)?.label ?? "")}</p>` : ""}
+            ${q.hint ? `<p class="text-[11px] text-slate-400 mt-0.5">${esc(q.hint)}</p>` : ""}
+            <textarea data-q="${q.key}" data-skill="${q.skillTag ?? ""}" rows="2"
+                      placeholder="${esc(q.placeholder)}"
+                      class="w-full mt-2 px-3 py-2 border-2 border-slate-200 rounded-lg text-sm resize-y
+                             focus:border-blue-500 focus:outline-none">${esc(current)}</textarea>
+            <p class="text-[11px] text-slate-400 mt-1" data-status="${q.key}"></p>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+// Save on blur rather than per keystroke: one row per question, and a plant
+// floor connection should not need a request per character.
+$("qaList").addEventListener("focusout", async (event) => {
+  const box = event.target.closest("[data-q]");
+  if (!box) return;
+
+  const key = box.dataset.q;
+  const value = box.value.trim();
+  if ((answers.get(key) ?? "") === value) return;
+
+  const status = document.querySelector(`[data-status="${key}"]`);
+  try {
+    const saved = await technician.saveAnswer(key, box.dataset.skill || null, value);
+    if (saved) answers.set(key, saved); else answers.delete(key);
+    if (status) { status.textContent = saved ? "Saved" : "Cleared"; status.className = "text-[11px] text-green-600 mt-1"; }
+    renderProfile();
+    $("qaCount").textContent = `(${answers.size}/${questionsFor(mySkills.map((s) => s.skill_tag)).length})`;
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "saveAnswer", key });
+    if (status) { status.textContent = "Could not save — check your connection."; status.className = "text-[11px] text-red-600 mt-1"; }
+  }
+});
+
+// ---------- offers and assignments ----------
+
+const A_STATUS = {
+  offered:          ["Offered",         "bg-blue-50 text-blue-700"],
+  accepted:         ["You accepted",    "bg-green-50 text-green-700"],
+  client_confirmed: ["Plant confirmed", "bg-green-50 text-green-700"],
+  deployment_ready: ["Ready to travel", "bg-indigo-50 text-indigo-700"],
+  deployed:         ["On site",         "bg-indigo-50 text-indigo-700"],
+  in_progress:      ["Working",         "bg-indigo-50 text-indigo-700"],
+  paused:           ["Paused",          "bg-amber-50 text-amber-700"],
+  completed:        ["Completed",       "bg-slate-100 text-slate-600"],
+  cancelled:        ["Cancelled",       "bg-red-50 text-red-700"],
+  disputed:         ["In dispute",      "bg-red-50 text-red-700"],
+};
+
+const dayFmt = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" });
+const span = (a, b) => `${dayFmt.format(new Date(a))} – ${dayFmt.format(new Date(b))}`;
+
+async function renderRoles() {
+  let roles = [], mine = [];
+  try {
+    [roles, mine] = await Promise.all([assignments.openRoles(), assignments.mine()]);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "openRoles" });
+  }
+
+  // Your own engagements first — they are the commitments, the offers are only
+  // possibilities.
+  const live = mine.filter((a) => a.status !== "cancelled");
+  $("myAssignments").innerHTML = live.length
+    ? `<p class="text-sm font-semibold mb-2">Your assignments</p>
+       <div class="space-y-2">${live.map((a) => {
+         const [label, cls] = A_STATUS[a.status] ?? [a.status, "bg-slate-100 text-slate-600"];
+         return `
+           <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-3">
+             <div class="min-w-0 flex-1">
+               <p class="text-sm font-medium text-slate-800">${esc(span(a.starts_on, a.ends_on))}</p>
+               <p class="text-xs text-slate-500 num">${inr.format(a.agreed_day_rate)}/day &middot; locked when you accepted</p>
+             </div>
+             <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}">${label}</span>
+           </div>`;
+       }).join("")}</div>`
+    : "";
+
+  // A role you already hold is not an offer.
+  const held = new Set(mine.map((a) => a.requirement_id));
+  const offers = roles.filter((r) => !held.has(r.requirement_id));
+
+  $("roleCount").textContent = offers.length ? `(${offers.length})` : "";
+
+  if (!offers.length) {
+    $("roleList").innerHTML = `
+      <div class="bg-white rounded-2xl shadow-sm p-8 text-center">
+        <i class="fas fa-inbox text-2xl text-slate-200"></i>
+        <p class="text-sm text-slate-600 mt-2 font-medium">No offers right now</p>
+        <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+          When a plant posts work that matches your skills and we have priced it,
+          it appears here and we message you on WhatsApp. You do not need to keep checking.
+        </p>
+      </div>`;
+    return;
+  }
+
+  $("roleList").innerHTML = offers.map((r) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <div class="flex items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-slate-800">${esc(r.role_title)}</p>
+          <p class="text-xs text-slate-500 num mt-0.5">
+            <i class="fas fa-location-dot text-slate-300"></i> ${esc(r.location_city ?? "—")}
+            &middot; ${esc(span(r.starts_on, r.ends_on))}
+            &middot; ${r.duration_days} days
+            ${r.shift ? ` &middot; ${esc(r.shift)} shift` : ""}
+          </p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-lg font-bold text-slate-900 num leading-none">${inr.format(r.day_rate)}</p>
+          <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mt-0.5">per day</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-1 mt-3">
+        ${(r.required_skills ?? []).map((t) =>
+          `<span class="px-2 py-0.5 rounded-md bg-blue-50 text-[11px] text-blue-700">${esc(COMP.get(t)?.label ?? t.replace(/_/g," "))}</span>`).join("")}
+        <span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-500">Needs ${esc(r.min_skill_level)}</span>
+        ${r.travel_required ? `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-[11px] text-amber-700">Travel</span>` : ""}
+        ${r.accommodation_provided ? `<span class="px-2 py-0.5 rounded-md bg-green-50 text-[11px] text-green-700">Stay provided</span>` : ""}
+      </div>
+
+      ${r.notes ? `<p class="text-xs text-slate-500 mt-2">${esc(r.notes)}</p>` : ""}
+
+      <div class="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-slate-100">
+        <span class="text-xs text-slate-500 num">
+          ${r.indicative_total ? `About <b class="text-slate-700">${inr.format(r.indicative_total)}</b> for the full ${r.duration_days} days` : ""}
+        </span>
+        <button data-accept="${r.requirement_id}"
+                data-summary="${esc(r.role_title)} · ${esc(span(r.starts_on, r.ends_on))} · ${inr.format(r.day_rate)}/day"
+                class="ml-auto bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-800 transition">
+          Accept this work
+        </button>
+      </div>
+      <p class="text-[11px] mt-2 hidden" data-accept-msg="${r.requirement_id}"></p>
+    </div>`).join("");
+}
+
+$("roleList").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-accept]");
+  if (!button) return;
+
+  const id = button.dataset.accept;
+  const note = document.querySelector(`[data-accept-msg="${id}"]`);
+
+  // Accepting is a commitment with money and dates attached, and under the
+  // cancellation policy it cannot be undone freely. So the confirmation states
+  // the terms rather than asking "are you sure?".
+  if (!window.confirm(`Accept this assignment?\n\n${button.dataset.summary}\n\nYour rate is locked at this figure. Once you accept, the plant stops looking for someone else.`)) {
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Accepting…";
+  try {
+    await assignments.accept(id);
+    await renderRoles();
+    showTab("roles");
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "acceptRole", requirement: id });
+    // The database's refusals ARE the business answers — overlapping dates, a
+    // filled role, an unpriced role. Showing them verbatim tells the person
+    // what to do; a generic message does not.
+    if (note) {
+      note.textContent = error instanceof ApiError ? error.message : "Could not accept. Please try again.";
+      note.className = "text-[11px] mt-2 text-red-600";
+    }
+    button.disabled = false;
+    button.textContent = "Accept this work";
+  }
+});
+
+// ---------- boot ----------
+(async function boot() {
+  try {
+    const user = await auth.currentUser();
+    if (!user) { $("gate").classList.remove("hidden"); return; }
+
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    RoboMonitor.setUser({ id: user.id, role: "technician" });
+
+    const [profile, pass, sk, ans] = await Promise.all([
+      profiles.me(), passports.mine(), skillsApi.mine(), technician.answers(),
+    ]);
+    // This page is for professionals. A plant or an administrator who lands
+    // here is sent to their own page rather than rendered as an empty
+    // technician (a plant account was, until this check).
+    if (profile?.role_type === "client") { location.replace("/client-dashboard.html"); return; }
+    if (profile?.role_type === "admin")  { location.replace("/admin.html"); return; }
+    if (!profile)                        { location.replace("/technician-onboard.html"); return; }
+    me = profile; passport = pass; mySkills = sk ?? [];
+    answers = new Map((ans ?? []).map((a) => [a.question_key, a.answer]));
+
+    renderProfile();
+    renderQA();
+    showTab("projects");
+    await Promise.all([renderProjects(), renderRoles()]);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "dashboard.boot" });
+  }
+})();
+</script>
+</body>
+</html>

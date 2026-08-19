@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F8FAFC">
+<title>Join RoboCADer Pro — Technician Registration</title>
+
+<!--
+  RoboCADer Pro — Technician onboarding
+
+  Card-on-slate layout: white rounded-2xl shadow-xl panel, border-2 slate-200
+  inputs, blue-600 primary, Font Awesome icons.
+
+  DIFFERENCES FROM A PLAIN FORM, ALL DELIBERATE:
+    - Rate is a PRESET CHIP, not a free number field. Typing "45000" meaning a
+      monthly salary is the single most damaging input error in this product —
+      it prices a technician out of every match. Presets make that impossible.
+      A custom field is still there for anyone outside the range.
+    - Errors render inline under the field, never as alert(). A blocking modal
+      on a phone loses the user's place in a long form.
+    - Draft saves to localStorage on every keystroke — plant-floor connections
+      drop mid-form and re-typing on a phone is where people give up.
+    - Controls are 48px+ for gloved hands.
+
+  Tailwind + Font Awesome via CDN as specified. NOTE: cdn.tailwindcss.com ships
+  a JIT compiler (~120KB) to every visitor and is dev-only per Tailwind's docs.
+  Build a static stylesheet before launch.
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+  input, select, textarea { font-size: 16px !important; }  /* stops iOS zoom-on-focus */
+  .num { font-variant-numeric: tabular-nums; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid #2563EB; outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<script src="/js/config.js"></script>
+<script src="/js/monitoring.js"></script>
+<!-- ?v= is a cache buster. The taxonomy just changed shape, and a browser
+     holding the previous skill-tags.js would find no competencies and render
+     an empty skill list. Bump this whenever the taxonomy changes. -->
+<script src="/js/skill-tags.js?v=4"></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen p-4 sm:py-10">
+
+<div class="max-w-3xl w-full mx-auto space-y-4">
+
+  <!-- =====================================================================
+       REGISTRATION — Naukri-style single form.
+
+       Mobile number is a FIELD here, not a login method. profiles.phone_number
+       is NOT NULL and is how the matching engine reaches people, but SMS OTP is
+       unreliable in India (DND silently drops it). Collecting the number in the
+       form gets what we need without depending on SMS at all.
+
+       Everything a profile needs — name, email, password, mobile — is captured
+       in one screen, so the next screen is purely the Skill Passport.
+  ====================================================================== -->
+  <section id="authStep" class="bg-white rounded-2xl shadow-xl overflow-hidden">
+
+    <div class="flex items-center justify-between px-6 pt-5">
+      <div class="flex items-center gap-2.5">
+        <div class="bg-blue-600 w-9 h-9 rounded-lg flex items-center justify-center">
+          <i class="fas fa-industry text-white text-sm"></i>
+        </div>
+        <div class="leading-tight">
+          <p class="font-bold text-slate-800">RoboCADer <span class="text-blue-600">Pro</span></p>
+          <p class="text-[10px] text-slate-400 -mt-0.5">Industrial talent platform</p>
+        </div>
+      </div>
+      <p class="text-sm text-slate-500">
+        <span id="switchPrompt">Already registered?</span>
+        <button type="button" id="switchModeBtn" class="text-blue-600 font-semibold hover:text-blue-800">Login</button>
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-[1fr_auto_200px] gap-6 p-6">
+
+      <!-- form -->
+      <div>
+        <h1 id="authTitle" class="text-xl font-bold text-slate-800">Create your Skill Passport</h1>
+        <p id="authSubtitle" class="text-sm text-slate-500 mb-5">Get matched to plant projects across India</p>
+
+        <div class="space-y-3">
+          <div data-signup-only>
+            <label for="regName" class="text-sm font-medium text-slate-700">Full name <span class="text-red-500">*</span></label>
+            <input id="regName" type="text" autocomplete="name" placeholder="What is your name?"
+                   class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+            <p class="hidden mt-1 text-sm text-red-600" data-error-for="regName"></p>
+          </div>
+
+          <div>
+            <label for="emailInput" class="text-sm font-medium text-slate-700">Email ID <span class="text-red-500">*</span></label>
+            <input id="emailInput" type="email" autocomplete="email" placeholder="Tell us your email ID"
+                   class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+            <p class="hidden mt-1 text-sm text-red-600" data-error-for="emailInput"></p>
+          </div>
+
+          <div>
+            <!--
+              MOBILE VERIFICATION GATE.
+
+              Hidden entirely unless ROBOCADER_CONFIG.REQUIRE_PHONE_VERIFICATION
+              names a live channel. Shipping a visible "Send OTP" button that
+              silently does nothing is worse than not having the feature: the
+              person waits, nothing arrives, and they conclude the platform is
+              broken rather than that a setting is off.
+            -->
+            <div id="otpPanel" class="hidden mb-4 p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <p class="text-xs font-medium text-slate-700">Verify your mobile</p>
+              <p class="text-[11px] text-slate-500 mt-0.5">
+                We send a 6-digit code. You cannot set a password until it is confirmed.
+              </p>
+
+              <div class="flex gap-2 mt-2">
+                <div class="flex-1 flex">
+                  <span class="px-2.5 py-2 bg-slate-100 border-2 border-r-0 border-slate-200 rounded-l-lg text-sm text-slate-600 num">+91</span>
+                  <input id="otpPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="98765 43210"
+                         class="w-full px-2.5 py-2 border-2 border-slate-200 rounded-r-lg text-sm num focus:border-blue-500 focus:outline-none">
+                </div>
+                <button type="button" id="sendOtpBtn"
+                        class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 shrink-0">
+                  Send code
+                </button>
+              </div>
+
+              <div id="otpCodeRow" class="hidden flex gap-2 mt-2">
+                <input id="otpCode" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code"
+                       class="flex-1 px-2.5 py-2 border-2 border-slate-200 rounded-lg text-sm num tracking-widest focus:border-blue-500 focus:outline-none">
+                <button type="button" id="verifyOtpBtn"
+                        class="px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shrink-0">
+                  Verify
+                </button>
+              </div>
+
+              <p id="otpStatus" class="text-[11px] mt-2"></p>
+            </div>
+
+            <div class="flex items-baseline justify-between">
+              <label for="passwordInput" class="text-sm font-medium text-slate-700">Password <span class="text-red-500">*</span></label>
+              <button type="button" id="forgotBtn" class="text-xs text-blue-600 hover:text-blue-800">Forgot password?</button>
+            </div>
+            <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Minimum 8 characters"
+                   class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+            <p class="hidden mt-1 text-sm text-red-600" data-error-for="passwordInput"></p>
+          </div>
+
+          <div data-signup-only>
+            <label for="regPhone" class="text-sm font-medium text-slate-700">Mobile number <span class="text-red-500">*</span></label>
+            <div class="flex gap-2 mt-1.5">
+              <span class="flex items-center px-3 bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-600 num font-medium">+91</span>
+              <input id="regPhone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10"
+                     placeholder="Enter your mobile number"
+                     class="flex-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num">
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Project alerts are sent to this number on WhatsApp.</p>
+            <p class="hidden mt-1 text-sm text-red-600" data-error-for="regPhone"></p>
+          </div>
+
+          <div data-signup-only>
+            <label for="regCity" class="text-sm font-medium text-slate-700">Your city <span class="text-red-500">*</span></label>
+            <select id="regCity"
+                    class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none appearance-none bg-white">
+              <option value="">Select city</option>
+            </select>
+            <p class="hidden mt-1 text-sm text-red-600" data-error-for="regCity"></p>
+          </div>
+
+          <div id="authMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
+
+          <button id="submitAuthBtn"
+                  class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+            Register now
+          </button>
+
+          <p class="text-[11px] text-slate-400 text-center" data-signup-only>
+            By registering you agree to our terms of service.
+          </p>
+        </div>
+      </div>
+
+      <!-- vertical divider (desktop) / horizontal (mobile) -->
+      <div class="flex md:flex-col items-center gap-3">
+        <div class="flex-1 h-px md:h-auto md:w-px bg-slate-200"></div>
+        <span class="text-xs text-slate-400">Or</span>
+        <div class="flex-1 h-px md:h-auto md:w-px bg-slate-200"></div>
+      </div>
+
+      <!-- social -->
+      <div id="socialPanel" class="md:pt-14 hidden">
+        <p class="text-sm font-medium text-slate-700 mb-3 md:text-center">Continue with</p>
+        <button type="button" data-oauth="google"
+                class="w-full flex items-center justify-center gap-2.5 border-2 border-slate-200 rounded-xl py-2.5
+                       font-medium text-slate-700 hover:border-blue-500 hover:bg-blue-50 transition">
+          <i class="fab fa-google text-[#EA4335]"></i> Google
+        </button>
+        <button type="button" data-oauth="linkedin_oidc"
+                class="w-full mt-2 flex items-center justify-center gap-2.5 border-2 border-slate-200 rounded-xl py-2.5
+                       font-medium text-slate-700 hover:border-blue-500 hover:bg-blue-50 transition">
+          <i class="fab fa-linkedin text-[#0A66C2]"></i> LinkedIn
+        </button>
+
+        <div class="mt-6 hidden md:block">
+          <p class="text-xs font-semibold text-slate-600 mb-2">On registering, you can</p>
+          <ul class="space-y-2 text-[11px] text-slate-500">
+            <li class="flex gap-1.5"><i class="fas fa-circle-check text-green-500 mt-0.5"></i> Build a verified Skill Passport</li>
+            <li class="flex gap-1.5"><i class="fas fa-circle-check text-green-500 mt-0.5"></i> Get matched to plant projects</li>
+            <li class="flex gap-1.5"><i class="fas fa-circle-check text-green-500 mt-0.5"></i> Set your own day rate</li>
+            <li class="flex gap-1.5"><i class="fas fa-circle-check text-green-500 mt-0.5"></i> Paid against milestones</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== profile ===================== -->
+  <form id="profileForm" class="hidden max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6" novalidate>
+
+    <div class="flex items-center gap-3 mb-6">
+      <div class="bg-blue-600 p-2.5 rounded-xl">
+        <i class="fas fa-id-card text-white text-xl"></i>
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-lg font-bold text-slate-800">Your Skill Passport</h1>
+        <p class="text-xs text-slate-500">Verified professionals get matched first</p>
+      </div>
+      <button type="button" id="signOutBtn" class="ml-auto text-xs text-slate-400 hover:text-slate-700 shrink-0">Sign out</button>
+    </div>
+
+    <div class="space-y-4">
+
+      <div>
+        <input id="nameInput" type="text" autocomplete="name" placeholder="Full Name *"
+               class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="nameInput"></p>
+      </div>
+
+      <!--
+        Shown only when the session has no phone number (i.e. the technician
+        signed in by email). profiles.phone_number is NOT NULL and is how the
+        matching engine reaches them on WhatsApp, so it must be collected here.
+      -->
+      <div id="whatsappWrap" class="hidden">
+        <label for="whatsappInput" class="text-sm font-medium text-slate-700">WhatsApp number *</label>
+        <div class="flex gap-2 mt-1.5">
+          <span class="flex items-center px-3 bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-600 num font-medium">+91</span>
+          <input id="whatsappInput" type="tel" inputmode="numeric" maxlength="10" placeholder="98765 43210"
+                 class="flex-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num">
+        </div>
+        <p class="text-xs text-slate-400 mt-1.5">Project alerts are sent here.</p>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="whatsappInput"></p>
+      </div>
+
+      <div>
+        <select id="citySelect"
+                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none appearance-none bg-white">
+          <option value="">Select City *</option>
+        </select>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="citySelect"></p>
+      </div>
+
+      <!--
+        SKILLS AND LEVEL, IN ONE PASS.
+
+        The level picker sits ON each skill row rather than in a second panel
+        below. Selecting a level IS selecting the skill, so there is no way to
+        claim a skill without saying how good you are at it — which was the
+        loophole in the old two-step version: pick fifteen chips, ignore the
+        levels panel, and every skill silently defaulted to L2.
+
+        Sixteen rows, no search box. A list you can read in one screen does not
+        need to be searched, and a search box quietly encourages people to look
+        for the skill they wish they had.
+      -->
+      <div>
+        <div class="flex items-baseline justify-between">
+          <label class="text-sm font-medium text-slate-700">Your top skills *</label>
+          <button type="button" id="levelHelpBtn" class="text-xs text-blue-600 hover:text-blue-800">
+            <i class="fas fa-circle-question"></i> What do L1–L4 mean?
+          </button>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Up to three, and a level for each. Pick what you are genuinely strongest at —
+          three honest skills place you faster than a long list.
+        </p>
+
+        <div id="levelHelp" class="hidden mt-2 p-3 bg-slate-50 rounded-xl space-y-2"></div>
+
+        <div id="skillMatrix"
+             class="mt-3 space-y-2"></div>
+
+        <div class="flex items-baseline justify-between mt-2 gap-3">
+          <p class="text-xs text-slate-500">
+            <span id="skillHint" class="text-slate-500">Start with the skill you are strongest at.</span>
+          </p>
+          <p class="text-xs text-slate-400 shrink-0 num">
+            <span id="skillCount" class="font-semibold text-slate-700">0</span> of 3
+          </p>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-1">Self-declared until an assessor confirms it</p>
+        <p class="hidden mt-2 text-sm text-red-600" data-error-for="skills"></p>
+      </div>
+
+      <!-- rate -->
+      <div>
+        <label class="text-sm font-medium text-slate-700">Daily Rate (₹) *</label>
+        <p class="text-xs text-slate-400">Per day, not per month</p>
+        <div class="flex flex-wrap gap-2 mt-2" id="rateContainer"></div>
+        <div id="customRateWrap" class="hidden mt-2">
+          <input id="rateInput" type="number" inputmode="numeric" min="200" max="100000" step="100"
+                 placeholder="Enter your day rate"
+                 class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num">
+        </div>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="rate"></p>
+      </div>
+
+      <div>
+        <label for="experienceInput" class="text-sm font-medium text-slate-700">
+          Years of experience <span class="text-slate-400 font-normal">optional</span>
+        </label>
+        <input id="experienceInput" type="number" inputmode="decimal" min="0" max="60" step="0.5" placeholder="6"
+               class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num">
+      </div>
+
+      <!--
+        PREVIOUS WORK. A skills list is a claim; a named plant with dates is
+        evidence. This is what a new signup arrives with before they have any
+        platform history, and it is the first thing a plant head reads.
+      -->
+      <div>
+        <div class="flex items-baseline justify-between">
+          <label class="text-sm font-medium text-slate-700">Previous work</label>
+          <span class="text-xs text-slate-500"><span id="workCount" class="num font-semibold text-slate-700">0</span> added</span>
+        </div>
+        <p class="text-xs text-slate-400">Plants you have worked at. This is what clients read first.</p>
+
+        <div id="workList" class="mt-2 space-y-2"></div>
+
+        <button type="button" id="addWorkBtn"
+                class="w-full mt-2 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-sm
+                       font-medium text-slate-500 hover:border-blue-500 hover:text-blue-600 transition">
+          <i class="fas fa-plus"></i> Add a plant / project
+        </button>
+
+        <!-- inline entry form, hidden until "Add" is pressed -->
+        <div id="workForm" class="hidden mt-3 p-3 bg-slate-50 rounded-xl space-y-2.5">
+          <input id="workPlant" type="text" placeholder="Plant or company name *"
+                 class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white">
+          <input id="workRole" type="text" placeholder="Your role *  e.g. PLC Commissioning Engineer"
+                 class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white">
+          <input id="workCity" type="text" list="cityListWork" placeholder="City"
+                 class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white">
+          <datalist id="cityListWork"></datalist>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="workStart" class="text-xs text-slate-500">Started *</label>
+              <input id="workStart" type="month"
+                     class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white num">
+            </div>
+            <div>
+              <label for="workEnd" class="text-xs text-slate-500">Ended</label>
+              <input id="workEnd" type="month"
+                     class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white num">
+            </div>
+          </div>
+
+          <label class="flex items-center gap-2 text-sm text-slate-600">
+            <input id="workCurrent" type="checkbox" class="w-4 h-4 accent-blue-600">
+            I am still working here
+          </label>
+
+          <textarea id="workSummary" rows="2" maxlength="600"
+                    placeholder="What did you do there? e.g. Retrofitted 3 relay panels to S7-1500, commissioned line"
+                    class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white resize-y"></textarea>
+
+          <p id="workError" class="hidden text-sm text-red-600"></p>
+
+          <div class="flex gap-2">
+            <button type="button" id="saveWorkBtn"
+                    class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+              <i class="fas fa-check"></i> Add
+            </button>
+            <button type="button" id="cancelWorkBtn"
+                    class="px-4 py-2 rounded-lg text-sm text-slate-500 hover:text-slate-800">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- certificate -->
+      <div>
+        <label class="text-sm font-medium text-slate-700">Certificate <span class="text-slate-400 font-normal">optional</span></label>
+        <div id="certDropzone"
+             class="mt-1.5 border-2 border-dashed border-slate-300 rounded-xl p-4 text-center cursor-pointer
+                    hover:border-blue-500 hover:bg-blue-50/40 transition">
+          <i id="certIcon" class="fas fa-cloud-arrow-up text-2xl text-slate-400"></i>
+          <p class="text-sm text-slate-500 mt-1" id="certLabel">Tap to photograph or choose a file</p>
+          <p class="text-xs text-slate-400">JPG, PNG or PDF · max 10MB</p>
+          <input type="file" id="certInput" accept="image/*,application/pdf" capture="environment" class="hidden">
+        </div>
+        <div id="certStatus" class="hidden mt-2 text-sm rounded-xl p-3"></div>
+      </div>
+
+      <!-- availability -->
+      <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+        <div>
+          <span class="font-medium text-sm text-slate-700">Available for projects</span>
+          <p class="text-xs text-slate-400">Turn off while you are on a job</p>
+        </div>
+        <input type="checkbox" id="availabilityToggle" checked class="w-5 h-5 accent-blue-600 rounded shrink-0">
+      </div>
+
+      <div id="formMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
+
+      <button type="button" id="saveBtn"
+              class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+        <i class="fas fa-check-circle"></i> Complete Onboarding
+      </button>
+      <p class="text-center text-xs text-slate-400">
+        <i class="fas fa-lock text-[10px]"></i> Your number is never shown to plants.
+      </p>
+    </div>
+  </form>
+
+  <!--
+    THE PASSPORT, AFTER SAVING.
+
+    Previously a save produced a one-line banner at the bottom of a long form
+    and nothing else — you pressed the button and the page looked identical, so
+    it read as "nothing happened". Worse, a technician never saw what they had
+    just built or what a plant would see of them.
+
+    This deliberately mirrors the candidate card in the client dashboard. If a
+    plant head sees "PLC Programming · L3 · Siemens", so should the person who
+    declared it. It is also the honest place to state that being registered is
+    not the same as being verified.
+  -->
+  <section id="passportView" class="hidden max-w-md mx-auto">
+    <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+      <div class="bg-green-50 border-b border-green-100 px-6 py-5 text-center">
+        <div class="w-12 h-12 rounded-full bg-green-600 mx-auto flex items-center justify-center">
+          <i class="fas fa-check text-white text-xl"></i>
+        </div>
+        <h2 class="text-lg font-bold text-slate-800 mt-3">Your Skill Passport is live</h2>
+        <p class="text-sm text-slate-600 mt-1">This is what a plant sees when you match a project.</p>
+      </div>
+
+      <div class="p-6">
+        <div class="rounded-2xl border border-slate-200 p-4">
+          <div class="flex items-start gap-3">
+            <div class="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+              <i class="fas fa-user text-slate-400"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-slate-800 truncate" id="ppName"></p>
+              <p class="text-xs text-slate-500 num" id="ppMeta"></p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5 mt-3" id="ppBadges"></div>
+
+          <div class="mt-3 pt-3 border-t border-slate-100 space-y-2" id="ppSkills"></div>
+
+          <div class="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500" id="ppWork"></div>
+        </div>
+
+        <div class="mt-5">
+          <p class="text-sm font-semibold text-slate-800 mb-2">What happens next</p>
+          <ol class="space-y-2 text-sm text-slate-600">
+            <li class="flex gap-2.5">
+              <span class="text-slate-300 font-semibold num shrink-0">1</span>
+              <span>We match you to projects that need your skills, at your level, near you.</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="text-slate-300 font-semibold num shrink-0">2</span>
+              <span>You get the offer on WhatsApp &mdash; rate, dates, plant and city. Say yes or no.</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="text-slate-300 font-semibold num shrink-0">3</span>
+              <span><b class="text-slate-700">Only after you accept</b> do we ask for Aadhaar and PAN. Not to browse.</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="text-slate-300 font-semibold num shrink-0">4</span>
+              <span>You sign the consultant agreement online, work, and get paid against milestones.</span>
+            </li>
+          </ol>
+        </div>
+
+        <div class="mt-5 rounded-xl bg-slate-50 p-3">
+          <p class="text-xs text-slate-600">
+            <i class="fas fa-circle-info text-slate-400"></i>
+            Your levels are <b>self-declared</b> until an assessor confirms them. Clients are told
+            that too &mdash; so an honest L2 is worth more to you than an L4 you cannot demonstrate.
+          </p>
+        </div>
+
+        <div class="flex gap-2 mt-5">
+          <button type="button" id="editPassportBtn"
+                  class="flex-1 border-2 border-slate-200 text-slate-700 py-3 rounded-xl font-semibold hover:border-slate-300 transition">
+            <i class="fas fa-pen"></i> Edit
+          </button>
+          <a href="/technician-dashboard.html"
+             class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition text-center">
+            Go to my dashboard
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=7";
+
+const cfg = window.ROBOCADER_CONFIG ?? {};
+RoboMonitor.init({
+  dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT,
+  release: cfg.RELEASE, surface: "technician-onboard"
+});
+
+const $ = (id) => document.getElementById(id);
+const DRAFT_KEY = "robocader.technician.draft";
+
+// skills is a Map of tag -> "L1".."L4". A Set cannot carry the level.
+const state = {
+  phone: null,
+  skills: new Map(),
+  // Work entries added BEFORE the profile row exists (email-confirmation
+  // flow: the profile is created on the final save). Kept here and written
+  // after the profile, so the foreign key is satisfied — instead of a raw
+  // 'violates foreign key constraint' at the person's first click.
+  pendingWork: [],
+  profileExists: false,
+  rate: 3500,
+  certificateUploaded: false,
+  // Set only by a real verifyOtp round trip. Never inferred from the form.
+  phoneVerified: false,
+};
+
+const RATES = [1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 6000, 8000];
+
+const CITIES = ["Hosur","Chennai","Sriperumbudur","Oragadam","Coimbatore","Bengaluru","Pune","Chakan",
+  "Ahmedabad","Sanand","Vadodara","Rajkot","Gurugram","Manesar","Bhiwadi","Neemrana","Noida",
+  "Jamshedpur","Nashik","Aurangabad","Hyderabad","Sri City","Pithampur","Ludhiana","Baddi","Pantnagar"];
+
+$("citySelect").innerHTML = `<option value="">Select City *</option>` +
+  CITIES.map((c) => `<option value="${c}">${c}</option>`).join("");
+
+// ---------------------------------------------------------------------------
+// Chip styles — one source of truth so selected/unselected never drift
+// ---------------------------------------------------------------------------
+
+const CHIP_ON  = "px-4 py-2 rounded-full text-sm border-2 cursor-pointer transition select-none bg-blue-600 text-white border-blue-600";
+const CHIP_OFF = "px-4 py-2 rounded-full text-sm border-2 cursor-pointer transition select-none bg-white text-slate-700 border-slate-200 hover:border-slate-300";
+const RATE_ON  = "px-4 py-2 rounded-lg text-sm border-2 cursor-pointer transition num bg-blue-600 text-white border-blue-600";
+const RATE_OFF = "px-4 py-2 rounded-lg text-sm border-2 cursor-pointer transition num bg-white text-slate-700 border-slate-200 hover:border-slate-300";
+
+const LEVELS = ["L1", "L2", "L3", "L4"];
+
+/**
+ * THREE SKILLS, NOT SIXTEEN.
+ *
+ * The earlier version showed all sixteen rows and let you rate every one. That
+ * is the "I know everything" profile, and it destroys the thing the platform
+ * sells: a passport claiming twelve skills carries less signal than one
+ * claiming three, and a shortlist built from it is noise. The cap is the
+ * product, not a form restriction.
+ *
+ * Enforced structurally — there are only ever three slots, so the UI cannot
+ * express a fourth. Note this is NOT enforced in the database: technician_skills
+ * has no such constraint, because the table cannot tell a competency row from a
+ * brand row. If skills ever start arriving from somewhere other than this form,
+ * that constraint needs to exist server-side.
+ */
+const MAX_SKILLS = 3;
+
+/** Competency tag -> its detail tags, for cascade and cleanup. */
+const DETAILS_OF = new Map(
+  (window.ROBOCADER_COMPETENCIES ?? []).map((c) => [c.tag, c.details.map((d) => d.tag)]),
+);
+
+const COMPETENCY_BY_TAG = new Map(
+  (window.ROBOCADER_COMPETENCIES ?? []).map((c) => [c.tag, c]),
+);
+
+const LEVEL_ON  = "bg-blue-600 text-white border-blue-600";
+const LEVEL_OFF = "bg-white text-slate-500 border-slate-200 hover:border-slate-400";
+
+/** The chosen competencies, in the order they were picked. */
+function chosenSkills() {
+  return [...state.skills.keys()].filter((tag) => DETAILS_OF.has(tag));
+}
+
+function renderSkills() {
+  const chosen = chosenSkills();
+  const rows = [];
+
+  chosen.forEach((tag, index) => {
+    const c = COMPETENCY_BY_TAG.get(tag);
+    const level = state.skills.get(tag);
+
+    // Options exclude anything already picked in another slot, so the same
+    // skill cannot be claimed twice at two different levels.
+    const options = (window.ROBOCADER_COMPETENCIES ?? [])
+      .filter((o) => o.tag === tag || !chosen.includes(o.tag))
+      .map((o) => `<option value="${o.tag}" ${o.tag === tag ? "selected" : ""}>${escapeHtml(o.label)}</option>`)
+      .join("");
+
+    const details = c?.details?.length
+      ? `<div class="flex flex-wrap gap-1.5 mt-2">
+           <span class="text-[11px] text-slate-400 self-center mr-1">Which ones?</span>
+           ${c.details.map((d) => `
+             <button type="button" data-detail="${d.tag}" data-parent="${tag}"
+               aria-pressed="${state.skills.has(d.tag)}"
+               class="px-2.5 py-1 rounded-full text-[11px] border transition ${
+                 state.skills.has(d.tag)
+                   ? "bg-blue-50 text-blue-700 border-blue-300"
+                   : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"}"
+               >${escapeHtml(d.label)}</button>`).join("")}
+         </div>`
+      : "";
+
+    rows.push(`
+      <div class="p-3 rounded-xl border-2 ${level ? "border-blue-200 bg-blue-50/40" : "border-amber-200 bg-amber-50/40"}">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold text-slate-400 num w-4 shrink-0">${index + 1}</span>
+          <select data-slot="${index}"
+                  class="flex-1 min-w-0 px-3 py-2 border-2 border-slate-200 rounded-lg bg-white text-sm focus:border-blue-500 focus:outline-none">
+            ${options}
+          </select>
+          <button type="button" data-remove="${tag}" title="Remove this skill"
+                  class="text-slate-300 hover:text-red-500 px-1 shrink-0"><i class="fas fa-xmark"></i></button>
+        </div>
+
+        ${c?.description
+          ? `<p class="text-[11px] text-slate-500 mt-1.5 pl-6 leading-relaxed">${escapeHtml(c.description)}</p>`
+          : ""}
+
+        <div class="flex items-center gap-2 mt-2 pl-6">
+          <span class="text-[11px] text-slate-500 shrink-0">${level ? "Your level" : "Set your level"}</span>
+          <div class="flex gap-1" role="group" aria-label="${escapeHtml(c?.label ?? tag)} level">
+            ${LEVELS.map((l) => `
+              <button type="button" data-level-tag="${tag}" data-level="${l}" aria-pressed="${level === l}"
+                class="w-9 h-8 rounded-lg text-xs font-semibold border-2 transition
+                       ${level === l ? LEVEL_ON : LEVEL_OFF}">${l}</button>`).join("")}
+          </div>
+        </div>
+        ${details}
+      </div>`);
+  });
+
+  // One empty slot, until the cap is reached.
+  if (chosen.length < MAX_SKILLS) {
+    const options = (window.ROBOCADER_COMPETENCIES ?? [])
+      .filter((o) => !chosen.includes(o.tag))
+      .map((o) => `<option value="${o.tag}">${escapeHtml(o.label)}</option>`)
+      .join("");
+
+    rows.push(`
+      <div class="p-3 rounded-xl border-2 border-dashed border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold text-slate-300 num w-4 shrink-0">${chosen.length + 1}</span>
+          <select data-slot="new"
+                  class="flex-1 min-w-0 px-3 py-2 border-2 border-slate-200 rounded-lg bg-white text-sm text-slate-500 focus:border-blue-500 focus:outline-none">
+            <option value="">${chosen.length ? "Add another skill…" : "Choose your main skill…"}</option>
+            ${options}
+          </select>
+        </div>
+      </div>`);
+  }
+
+  $("skillMatrix").innerHTML = rows.join("");
+  $("skillCount").textContent = chosen.length;
+
+  const unrated = chosen.filter((t) => !state.skills.get(t)).length;
+  $("skillHint").textContent = chosen.length === 0
+    ? "Start with the skill you are strongest at."
+    : unrated
+      ? `Set a level for ${unrated === 1 ? "the highlighted skill" : `${unrated} highlighted skills`}.`
+      : chosen.length < MAX_SKILLS
+        ? `You can add ${MAX_SKILLS - chosen.length} more.`
+        : "That is the maximum. Remove one to change it.";
+}
+
+/**
+ * Puts a skill in a slot.
+ *
+ * A newly chosen skill is deliberately left UNRATED rather than defaulting to
+ * L2. A default here is an unmade choice that looks like a made one, and L2 on
+ * a passport is a claim we would be passing to a plant.
+ */
+function chooseSkill(tag, replacing = null) {
+  if (replacing) removeSkill(replacing, { silent: true });
+  if (!tag || state.skills.has(tag)) { renderSkills(); return; }
+  if (chosenSkills().length >= MAX_SKILLS) { renderSkills(); return; }
+  state.skills.set(tag, null);
+  renderSkills();
+  saveDraft();
+}
+
+/** Removing a competency must take its brand tags with it — an orphaned
+ *  Siemens_PLC would keep matching PLC work the technician just dropped. */
+function removeSkill(tag, { silent = false } = {}) {
+  state.skills.delete(tag);
+  for (const detail of DETAILS_OF.get(tag) ?? []) state.skills.delete(detail);
+  if (!silent) { renderSkills(); saveDraft(); }
+}
+
+function setLevel(tag, level) {
+  state.skills.set(tag, level);
+  for (const detail of DETAILS_OF.get(tag) ?? []) {
+    if (state.skills.has(detail)) state.skills.set(detail, level);
+  }
+  renderSkills();
+  saveDraft();
+}
+
+function toggleDetail(tag, parentTag) {
+  if (state.skills.has(tag)) state.skills.delete(tag);
+  else state.skills.set(tag, state.skills.get(parentTag) ?? null);
+  renderSkills();
+  saveDraft();
+}
+
+$("skillMatrix").addEventListener("change", (event) => {
+  const select = event.target.closest("[data-slot]");
+  if (!select) return;
+  const slot = select.dataset.slot;
+  chooseSkill(select.value, slot === "new" ? null : chosenSkills()[Number(slot)]);
+});
+
+$("skillMatrix").addEventListener("click", (event) => {
+  const level = event.target.closest("[data-level-tag]");
+  if (level) { setLevel(level.dataset.levelTag, level.dataset.level); return; }
+
+  const remove = event.target.closest("[data-remove]");
+  if (remove) { removeSkill(remove.dataset.remove); return; }
+
+  const detail = event.target.closest("[data-detail]");
+  if (detail) toggleDetail(detail.dataset.detail, detail.dataset.parent);
+});
+
+// ---------------------------------------------------------------------------
+// Rate presets
+// ---------------------------------------------------------------------------
+
+function renderRates() {
+  $("rateContainer").innerHTML =
+    RATES.map((r) => `<span data-rate="${r}" role="button" tabindex="0"
+        class="${state.rate === r ? RATE_ON : RATE_OFF}">₹${r.toLocaleString("en-IN")}</span>`).join("") +
+    `<span data-rate="custom" role="button" tabindex="0"
+        class="${state.rate === "custom" ? RATE_ON : RATE_OFF}">Other…</span>`;
+
+  $("customRateWrap").classList.toggle("hidden", state.rate !== "custom");
+}
+
+$("rateContainer").addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-rate]");
+  if (!chip) return;
+  state.rate = chip.dataset.rate === "custom" ? "custom" : Number(chip.dataset.rate);
+  renderRates();
+  if (state.rate === "custom") $("rateInput").focus();
+  saveDraft();
+});
+
+/** Resolves the chosen rate to a number, or null when unset/invalid. */
+function resolvedRate() {
+  if (state.rate === "custom") {
+    const value = Number($("rateInput").value);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  return state.rate;
+}
+
+// ---------------------------------------------------------------------------
+// Draft
+// ---------------------------------------------------------------------------
+
+function saveDraft() {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      name: $("nameInput").value, city: $("citySelect").value,
+      rate: state.rate, customRate: $("rateInput").value,
+      experience: $("experienceInput").value, skills: [...state.skills.entries()],
+      available: $("availabilityToggle").checked
+    }));
+  } catch { /* private browsing */ }
+}
+
+function restoreDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null");
+    if (!d) return;
+    $("nameInput").value = d.name ?? "";
+    if (d.city) $("citySelect").value = d.city;
+    $("rateInput").value = d.customRate ?? "";
+    $("experienceInput").value = d.experience ?? "";
+    if (d.rate !== undefined) state.rate = d.rate;
+    // Older drafts stored a plain array of tags; new ones store [tag, level].
+    (d.skills ?? []).forEach((entry) => {
+      // `|| "L2"` used to live here. A restored draft must not gain a level
+      // the person never chose — leave it unrated and make them pick.
+      if (Array.isArray(entry)) state.skills.set(entry[0], entry[1] ?? null);
+      else state.skills.set(entry, null);
+    });
+    if (d.available === false) $("availabilityToggle").checked = false;
+  } catch { /* corrupt draft */ }
+}
+
+["nameInput", "rateInput", "experienceInput"].forEach((id) => $(id).addEventListener("input", saveDraft));
+$("citySelect").addEventListener("change", saveDraft);
+$("availabilityToggle").addEventListener("change", saveDraft);
+
+// ---------------------------------------------------------------------------
+// Messaging
+// ---------------------------------------------------------------------------
+
+const BANNER = {
+  info:    "bg-slate-100 text-slate-700",
+  success: "bg-green-50 text-green-700 border border-green-200",
+  error:   "bg-red-50 text-red-700 border border-red-200"
+};
+
+function banner(node, text, kind = "info") {
+  node.className = `text-sm rounded-xl p-3 ${BANNER[kind]}`;
+  node.textContent = text;
+  node.classList.remove("hidden");
+}
+
+function setFieldError(field, message) {
+  const node = document.querySelector(`[data-error-for="${field}"]`);
+  if (!node) return;
+  node.textContent = message ?? "";
+  node.classList.toggle("hidden", !message);
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Registration / login
+// ---------------------------------------------------------------------------
+
+let authMode = "signup";   // registration is the default — most arrivals are new
+
+$("regCity").innerHTML = `<option value="">Select city</option>` +
+  CITIES.map((c) => `<option value="${c}">${c}</option>`).join("");
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === "signup";
+
+  document.querySelectorAll("[data-signup-only]").forEach((el) => el.classList.toggle("hidden", !signup));
+  $("authTitle").textContent    = signup ? "Create your Skill Passport" : "Login to your account";
+  $("authSubtitle").textContent = signup ? "Get matched to plant projects across India"
+                                         : "Welcome back";
+  $("submitAuthBtn").textContent = signup ? "Register now" : "Login";
+  $("switchPrompt").textContent  = signup ? "Already registered?" : "New here?";
+  $("switchModeBtn").textContent = signup ? "Login" : "Register";
+  $("passwordInput").autocomplete = signup ? "new-password" : "current-password";
+  $("forgotBtn").classList.toggle("hidden", signup);
+  $("authMessage").classList.add("hidden");
+}
+
+$("switchModeBtn").addEventListener("click", () => setAuthMode(authMode === "signup" ? "signin" : "signup"));
+
+// Social sign-in only when a provider is actually configured in Supabase.
+// A button for an unconfigured provider is a promise the next click breaks
+// ("Unsupported provider"), and it advertises data-sharing we do not do.
+const OAUTH_PROVIDERS = Array.isArray(cfg.OAUTH_PROVIDERS) ? cfg.OAUTH_PROVIDERS : [];
+document.querySelectorAll("[data-oauth]").forEach((b) => {
+  if (!OAUTH_PROVIDERS.includes(b.dataset.oauth)) b.remove();
+});
+if (OAUTH_PROVIDERS.length) $("socialPanel").classList.remove("hidden");
+
+function showCheckInbox(email) {
+  const panel = $("authStep");
+  // Hide every direct child (the two-column auth layout), then show the card.
+  Array.from(panel.children).forEach((n) => n.classList.add("hidden"));
+  let card = $("checkInboxCard");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "checkInboxCard";
+    card.className = "max-w-md mx-auto text-center py-6";
+    panel.appendChild(card);
+  }
+  card.innerHTML = `
+    <div class="w-14 h-14 mx-auto rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+      <i class="fas fa-envelope-open-text text-blue-600 text-2xl"></i>
+    </div>
+    <h2 class="text-xl font-bold text-slate-800">Check your inbox</h2>
+    <p class="text-slate-600 mt-2">We sent a confirmation link to <strong>${escapeHtml(email)}</strong>.
+       Open it once and you will come straight back here, signed in, to build your Skill Passport.</p>
+    <p class="text-xs text-slate-400 mt-4">Not there in a minute? Look in Spam. The link is valid for 24 hours.</p>`;
+  card.classList.remove("hidden");
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+document.querySelectorAll("[data-oauth]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await auth.signInWithProvider(button.dataset.oauth, window.location.href);
+    } catch (error) {
+      button.disabled = false;
+      banner($("authMessage"),
+        error instanceof ApiError ? error.message : "Could not start sign-in.", "error");
+    }
+  });
+});
+
+function validateAuth() {
+  const errors = {};
+  const email = $("emailInput").value.trim();
+  const password = $("passwordInput").value;
+
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.emailInput = "Enter a valid email address.";
+  if (password.length < 8) errors.passwordInput = "Password must be at least 8 characters.";
+
+  if (authMode === "signup") {
+    if ($("regName").value.trim().length < 2) errors.regName = "Enter your full name.";
+    const digits = $("regPhone").value.replace(/\D/g, "");
+    if (digits.length !== 10 || !/^[6-9]/.test(digits)) errors.regPhone = "Enter a valid 10-digit mobile number.";
+    if (!$("regCity").value) errors.regCity = "Select your city.";
+  }
+
+  ["regName", "emailInput", "passwordInput", "regPhone", "regCity"]
+    .forEach((f) => setFieldError(f, errors[f]));
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Mobile verification
+// ---------------------------------------------------------------------------
+
+/**
+ * Which OTP channel is live, if any. Read once — a half-configured channel
+ * discovered mid-registration is worse than none.
+ */
+const PHONE_VERIFICATION = cfg.REQUIRE_PHONE_VERIFICATION || false;
+
+if (PHONE_VERIFICATION) {
+  $("otpPanel").classList.remove("hidden");
+  // The mobile is asked for once. Keep the registration field and the OTP
+  // field in step so nobody verifies one number and registers another.
+  $("regPhone")?.addEventListener("input", () => {
+    if (!state.phoneVerified) $("otpPhone").value = $("regPhone").value;
+  });
+}
+
+function otpStatus(text, kind = "info") {
+  const node = $("otpStatus");
+  node.textContent = text;
+  node.className = `text-[11px] mt-2 ${
+    { info: "text-slate-500", ok: "text-green-600", error: "text-red-600" }[kind]}`;
+}
+
+$("sendOtpBtn").addEventListener("click", async () => {
+  const digits = $("otpPhone").value.replace(/\D/g, "");
+  if (digits.length !== 10) { otpStatus("Enter a 10-digit mobile number.", "error"); return; }
+
+  const button = $("sendOtpBtn");
+  button.disabled = true;
+  otpStatus("Sending…");
+  try {
+    await auth.sendPhoneOtp(`+91${digits}`);
+    $("otpCodeRow").classList.remove("hidden");
+    $("otpCode").focus();
+    otpStatus(`Code sent to +91 ${digits}. It expires in 10 minutes.`, "ok");
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "sendPhoneOtp" });
+    // Be specific. "Something went wrong" sends someone to retry a thing that
+    // cannot work; the honest cause is almost always an unconfigured provider.
+    otpStatus(
+      error instanceof ApiError && /provider|disabled|not enabled/i.test(error.message)
+        ? "SMS is not switched on yet. Contact InChi and register with email for now."
+        : "Could not send the code. Check the number and try again.",
+      "error");
+    button.disabled = false;
+    return;
+  }
+
+  // A resend cooldown, because the button is free to click and the messages
+  // are not — each one costs money and eats the provider's rate limit.
+  let left = 30;
+  button.textContent = `Resend ${left}s`;
+  const tick = setInterval(() => {
+    left -= 1;
+    button.textContent = left > 0 ? `Resend ${left}s` : "Resend";
+    if (left <= 0) { clearInterval(tick); button.disabled = false; }
+  }, 1000);
+});
+
+$("verifyOtpBtn").addEventListener("click", async () => {
+  const digits = $("otpPhone").value.replace(/\D/g, "");
+  const code = $("otpCode").value.replace(/\D/g, "");
+  if (code.length !== 6) { otpStatus("Enter the 6-digit code.", "error"); return; }
+
+  const button = $("verifyOtpBtn");
+  button.disabled = true;
+  try {
+    await auth.verifyPhoneOtp(`+91${digits}`, code);
+    state.phoneVerified = true;
+    state.phone = `+91${digits}`;
+    if ($("regPhone")) { $("regPhone").value = digits; $("regPhone").readOnly = true; }
+    $("otpPanel").className = "mb-4 p-3 rounded-xl bg-green-50 border border-green-200";
+    $("otpCodeRow").classList.add("hidden");
+    $("sendOtpBtn").classList.add("hidden");
+    otpStatus(`+91 ${digits} verified. You can set your password now.`, "ok");
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "verifyPhoneOtp" });
+    otpStatus("That code is not right, or it has expired. Send a new one.", "error");
+    button.disabled = false;
+  }
+});
+
+$("submitAuthBtn").addEventListener("click", async () => {
+  const errors = validateAuth();
+  if (Object.keys(errors).length) {
+    RoboMonitor.trackFormError("technician-register", errors);
+    return;
+  }
+
+  const email = $("emailInput").value.trim();
+  const password = $("passwordInput").value;
+  const button = $("submitAuthBtn");
+  const original = button.textContent;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Please wait…';
+
+  try {
+    if (authMode === "signup") {
+      // MOBILE VERIFIED BEFORE A PASSWORD EXISTS.
+      //
+      // The check sits here rather than in validateAuth() because it is the
+      // account-creation step that must be gated, not the form. Sign-in is
+      // untouched: someone who verified last month must not be asked again.
+      //
+      // Fails CLOSED. If the flag is on and the number is not verified, no
+      // account is created — an unverified mobile on a passport is worse than
+      // no passport, because we would be sending that person to a plant.
+      if (PHONE_VERIFICATION && !state.phoneVerified) {
+        banner($("authMessage"), "Verify your mobile number first.", "error");
+        $("otpPanel").classList.remove("hidden");
+        $("otpPanel").scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+
+      const { needsConfirmation } = await auth.signUpWithPassword(email, password, window.location.href);
+      if (needsConfirmation) {
+        // A dedicated state, not the login form again. The person has done
+        // their part; the next move is in their inbox.
+        showCheckInbox(email);
+        return;
+      }
+
+      // Registration already gathered everything a profile needs, so create it
+      // now — the next screen is purely the Skill Passport.
+      state.phone = `+91${$("regPhone").value.replace(/\D/g, "")}`;
+      await profiles.createOrUpdate({
+        fullName: $("regName").value.trim(),
+        phone: state.phone,
+        role: "technician",
+        city: $("regCity").value,
+      });
+    } else {
+      await auth.signInWithPassword(email, password);
+    }
+
+    const user = await auth.currentUser();
+    RoboMonitor.setUser({ id: user.id, role: "technician" });
+    await enterFormMode();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "register", mode: authMode });
+    banner($("authMessage"),
+      error instanceof ApiError ? error.message : "Could not continue. Please try again.", "error");
+  } finally {
+    button.disabled = false;
+    // Re-derive from the CURRENT mode — the mode may have changed above, and
+    // restoring the pre-click label produced "Login to your account" over a
+    // "Register now" button.
+    button.textContent = authMode === "signup" ? "Register now" : "Login";
+  }
+});
+
+$("forgotBtn").addEventListener("click", async () => {
+  const email = $("emailInput").value.trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    banner($("authMessage"), "Enter your email address first, then tap Forgot password.", "error");
+    return;
+  }
+  try {
+    await auth.sendPasswordReset(email, window.location.href);
+    banner($("authMessage"), `Reset link sent to ${email}.`, "success");
+  } catch (error) {
+    banner($("authMessage"),
+      error instanceof ApiError ? error.message : "Could not send the reset link.", "error");
+  }
+});
+
+setAuthMode("signup");
+
+$("signOutBtn").addEventListener("click", async () => { await auth.signOut(); location.reload(); });
+
+// ---------------------------------------------------------------------------
+// Form mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Local preview: ?preview=1 opens the form without signing in.
+ *
+ * Gated to localhost, and the gate is on the HOSTNAME rather than a build flag
+ * so it cannot be switched on in production by accident or by editing a query
+ * string. Saving still requires a real session — this reveals the form, it does
+ * not bypass auth. Useful because the whole form is behind a sign-in, which
+ * makes reviewing a layout change need a round trip through registration.
+ */
+const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname);
+const PREVIEW = IS_LOCAL && new URLSearchParams(location.search).get("preview") === "1";
+
+async function enterFormMode() {
+  $("authStep").classList.add("hidden");
+  $("profileForm").classList.remove("hidden");
+
+  // Email sign-in carries no phone number — ask for it in the form instead.
+  $("whatsappWrap").classList.toggle("hidden", Boolean(state.phone));
+
+  restoreDraft();
+  renderSkills();
+  renderRates();
+  refreshWork();
+
+  try {
+    const [profile, passport] = await Promise.all([profiles.me(), passports.mine()]);
+
+    state.profileExists = Boolean(profile);
+    if (profile) {
+      $("nameInput").value = profile.full_name ?? $("nameInput").value;
+      if (profile.location_city && CITIES.includes(profile.location_city)) {
+        $("citySelect").value = profile.location_city;
+      }
+      if (profile.daily_rate) {
+        const rate = Number(profile.daily_rate);
+        // An existing rate that is not one of the presets goes into "Other".
+        if (RATES.includes(rate)) { state.rate = rate; }
+        else { state.rate = "custom"; $("rateInput").value = rate; }
+        renderRates();
+      }
+      $("availabilityToggle").checked = profile.availability_status !== false;
+    }
+
+    if (passport) {
+      // An older passport predates per-skill levels. Carry the tags across
+      // unrated rather than inventing L2 on the person's behalf.
+      (passport.skills_array ?? []).forEach((tag) => { if (!state.skills.has(tag)) state.skills.set(tag, null); });
+      // Overlay the levels they actually declared.
+      try {
+        (await skillsApi.mine()).forEach((r) => state.skills.set(r.skill_tag, r.self_level));
+      } catch (error) {
+        RoboMonitor.captureException(error, { operation: "loadSkillLevels" });
+      }
+      if (passport.years_experience) $("experienceInput").value = passport.years_experience;
+      if (passport.certificate_url) {
+        state.certificateUploaded = true;
+        const verified = passport.verified_status === "verified";
+        markCertUploaded(verified ? "Certificate verified." : "Certificate uploaded — verification pending.",
+                         verified ? "success" : "info");
+      }
+      renderSkills();
+        }
+  } catch (error) {
+    // A prefill failure must never block a new registration.
+    RoboMonitor.captureException(error, { operation: "prefill" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skill levels
+// ---------------------------------------------------------------------------
+
+let levelGuide = [];
+
+$("levelHelpBtn").addEventListener("click", async () => {
+  const panel = $("levelHelp");
+  if (!panel.classList.contains("hidden")) { panel.classList.add("hidden"); return; }
+
+  if (!levelGuide.length) {
+    try {
+      levelGuide = await skillsApi.levelGuide();
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "levelGuide" });
+      // Definitions live in the database; if unreachable, say so rather than
+      // showing a hardcoded copy that could drift out of date.
+      panel.innerHTML = `<p class="text-xs text-slate-400">Could not load the level guide.</p>`;
+      panel.classList.remove("hidden");
+      return;
+    }
+  }
+
+  panel.innerHTML = levelGuide.map((g) => `
+    <p class="text-xs text-slate-600">
+      <span class="font-semibold text-slate-800">${g.level} &middot; ${escapeHtml(g.label)}</span>
+      <span class="text-slate-400">(${escapeHtml(g.short_name)})</span><br>
+      ${escapeHtml(g.description)}
+    </p>`).join("");
+  panel.classList.remove("hidden");
+});
+
+// ---------------------------------------------------------------------------
+// Previous work
+// ---------------------------------------------------------------------------
+
+const VERIFY_PILL = {
+  verified:      { label: "Verified", cls: "bg-green-50 text-green-700", icon: "fa-circle-check" },
+  pending:       { label: "Checking", cls: "bg-amber-50 text-amber-700", icon: "fa-clock" },
+  disputed:      { label: "Disputed", cls: "bg-red-50 text-red-700",     icon: "fa-triangle-exclamation" },
+  self_declared: { label: "Self-declared", cls: "bg-slate-100 text-slate-500", icon: "fa-user-pen" }
+};
+
+function renderWork(entries) {
+  $("workCount").textContent = entries.length;
+
+  if (!entries.length) {
+    $("workList").innerHTML =
+      `<p class="text-xs text-slate-400 py-2">No entries yet. Even one adds real weight to your passport.</p>`;
+    return;
+  }
+
+  $("workList").innerHTML = entries.map((w) => {
+    const pill = VERIFY_PILL[w.verified_status] ?? VERIFY_PILL.self_declared;
+    return `
+      <div class="p-3 bg-white border-2 border-slate-200 rounded-xl">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="font-semibold text-sm text-slate-800 truncate">${escapeHtml(w.role_title)}</p>
+            <p class="text-xs text-slate-500 truncate">
+              ${escapeHtml(w.plant_name)}${w.location_city ? " · " + escapeHtml(w.location_city) : ""}
+            </p>
+            <p class="text-xs text-slate-400 num mt-0.5">
+              ${escapeHtml(formatSpan(w.started_on, w.ended_on, w.is_current))}
+            </p>
+            ${w.summary ? `<p class="text-xs text-slate-600 mt-1.5">${escapeHtml(w.summary)}</p>` : ""}
+            <span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${pill.cls}">
+              <i class="fas ${pill.icon}"></i> ${pill.label}
+            </span>
+          </div>
+          <button type="button" data-remove-work="${w.id}"
+                  class="text-slate-300 hover:text-red-600 px-1 shrink-0" title="Remove">
+            <i class="fas fa-trash-can"></i>
+          </button>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function escapeHtml(v) {
+  return String(v ?? "").replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function refreshWork() {
+  try {
+    const saved = state.profileExists ? await workHistory.mine() : [];
+    const pending = state.pendingWork.map((e, i) => ({
+      id: `pending-${i}`, pending: true,
+      role_title: e.roleTitle, plant_name: e.plantName, location_city: e.locationCity,
+      started_on: e.startedOn, ended_on: e.endedOn, is_current: e.isCurrent,
+      summary: e.summary, verified_status: "self_declared",
+    }));
+    renderWork([...pending, ...saved]);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "loadWorkHistory" });
+    $("workList").innerHTML = `<p class="text-xs text-red-600 py-2">Could not load your work history.</p>`;
+  }
+}
+
+$("cityListWork").innerHTML = CITIES.map((c) => `<option value="${c}">`).join("");
+
+$("addWorkBtn").addEventListener("click", () => {
+  $("workForm").classList.remove("hidden");
+  $("addWorkBtn").classList.add("hidden");
+  $("workPlant").focus();
+});
+
+function closeWorkForm() {
+  $("workForm").classList.add("hidden");
+  $("addWorkBtn").classList.remove("hidden");
+  ["workPlant", "workRole", "workCity", "workStart", "workEnd", "workSummary"]
+    .forEach((id) => { $(id).value = ""; });
+  $("workCurrent").checked = false;
+  $("workError").classList.add("hidden");
+}
+
+$("cancelWorkBtn").addEventListener("click", closeWorkForm);
+
+$("workCurrent").addEventListener("change", () => {
+  $("workEnd").disabled = $("workCurrent").checked;
+  if ($("workCurrent").checked) $("workEnd").value = "";
+});
+
+$("saveWorkBtn").addEventListener("click", async () => {
+  const plant = $("workPlant").value.trim();
+  const role = $("workRole").value.trim();
+  const start = $("workStart").value;      // "YYYY-MM"
+  const end = $("workEnd").value;
+  const current = $("workCurrent").checked;
+
+  const showErr = (msg) => {
+    $("workError").textContent = msg;
+    $("workError").classList.remove("hidden");
+  };
+
+  if (plant.length < 2) return showErr("Enter the plant or company name.");
+  if (role.length < 2) return showErr("Enter your role there.");
+  if (!start) return showErr("Enter when you started.");
+  if (!current && end && end < start) return showErr("End date cannot be before the start date.");
+
+  const button = $("saveWorkBtn");
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding…';
+
+  try {
+    const entry = {
+      plantName: plant,
+      roleTitle: role,
+      locationCity: $("workCity").value.trim(),
+      // <input type="month"> gives YYYY-MM; the column is a date.
+      startedOn: `${start}-01`,
+      endedOn: end ? `${end}-01` : null,
+      isCurrent: current,
+      summary: $("workSummary").value.trim(),
+      // Tag the entry with whatever skills are selected right now — gives the
+      // client "where they last used this" rather than a bare skill list.
+      skillsUsed: [...state.skills.keys()]
+    };
+    if (state.profileExists) {
+      await workHistory.add(entry);
+    } else {
+      state.pendingWork.push(entry);   // written with the passport, below
+    }
+
+    closeWorkForm();
+    await refreshWork();
+    RoboMonitor.addBreadcrumb("work", "Work history entry added");
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "addWorkHistory" });
+    const msg = /foreign key/i.test(error?.message ?? "")
+      ? "Complete your passport first — previous work is saved with it."
+      : (error instanceof ApiError ? error.message : "Could not add that entry.");
+    showErr(msg);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-check"></i> Add';
+  }
+});
+
+$("workList").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-remove-work]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    if (button.dataset.removeWork.startsWith("pending-")) {
+      state.pendingWork.splice(Number(button.dataset.removeWork.slice(8)), 1);
+    } else {
+      await workHistory.remove(button.dataset.removeWork);
+    }
+    await refreshWork();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "removeWorkHistory" });
+    button.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Certificate
+// ---------------------------------------------------------------------------
+
+$("certDropzone").addEventListener("click", () => $("certInput").click());
+
+function markCertUploaded(text, kind) {
+  $("certDropzone").classList.add("border-green-500", "bg-green-50");
+  $("certIcon").className = "fas fa-circle-check text-2xl text-green-600";
+  banner($("certStatus"), text, kind);
+}
+
+$("certInput").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  // Matches the bucket limit in migration 004 — fail here rather than after a
+  // slow upload on a plant-floor connection.
+  if (file.size > 10 * 1024 * 1024) {
+    banner($("certStatus"), "That file is over 10 MB. Please use a smaller photo.", "error");
+    return;
+  }
+
+  $("certLabel").textContent = file.name;
+  banner($("certStatus"), "Uploading…", "info");
+
+  try {
+    await passports.uploadCertificate(file, "certificate");
+    state.certificateUploaded = true;
+    markCertUploaded("Certificate uploaded. Our team verifies within 48 hours.", "success");
+    RoboMonitor.addBreadcrumb("upload", "Certificate uploaded", { size_kb: Math.round(file.size / 1024) });
+  } catch (error) {
+    banner($("certStatus"), error instanceof ApiError ? error.message : "Upload failed. You can add it later.", "error");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Save
+// ---------------------------------------------------------------------------
+
+/** Resolves the phone number from the session, or from the form when absent. */
+function resolvedPhone() {
+  if (state.phone) return state.phone;
+  const digits = $("whatsappInput").value.replace(/\D/g, "");
+  return digits.length === 10 && /^[6-9]/.test(digits) ? `+91${digits}` : null;
+}
+
+function validate() {
+  const errors = {};
+  if ($("nameInput").value.trim().length < 2) errors.nameInput = "Please enter your full name.";
+  if (!$("citySelect").value) errors.citySelect = "Please select your city.";
+  const chosen = chosenSkills();
+  if (chosen.length === 0) {
+    errors.skills = "Choose at least one skill.";
+  } else if (chosen.some((tag) => !state.skills.get(tag))) {
+    // A skill picked but never rated. Blocking is the point: an unrated skill
+    // silently saved at a default level is a claim we would pass to a plant.
+    errors.skills = "Set your level (L1–L4) for every skill you have chosen.";
+  }
+  if (!resolvedPhone()) errors.whatsappInput = "Enter a valid 10-digit WhatsApp number.";
+
+  const rate = resolvedRate();
+  if (rate === null) errors.rate = "Enter your day rate.";
+  else if (rate < 200 || rate > 100000) errors.rate = "Enter a day rate between ₹200 and ₹1,00,000.";
+
+  ["nameInput", "citySelect", "skills", "rate", "whatsappInput"].forEach((f) => setFieldError(f, errors[f]));
+  return errors;
+}
+
+$("saveBtn").addEventListener("click", async () => {
+  const errors = validate();
+
+  if (Object.keys(errors).length) {
+    RoboMonitor.trackFormError("technician-onboard", errors);
+    banner($("formMessage"), "Please fix the highlighted fields.", "error");
+    document.querySelector("[data-error-for]:not(.hidden)")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  const button = $("saveBtn");
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+  // Localhost preview with nobody signed in: validation has run for real, but
+  // there is no session to save against. Render the passport so a layout change
+  // can be reviewed without registering. Guarded by PREVIEW, which is itself
+  // gated on hostname, AND by the absence of a session — so a signed-in person
+  // on localhost still takes the real path.
+  if (PREVIEW && !(await auth.currentUser())) {
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-rotate"></i> Update my profile';
+    banner($("formMessage"), "Preview only — nothing was saved.", "info");
+    showPassport();
+    return;
+  }
+
+  try {
+    // Profile identity goes through the RPC (migration 007); availability is a
+    // plain column update the user is allowed to make directly.
+    await profiles.createOrUpdate({
+      fullName: $("nameInput").value.trim(),
+      phone: resolvedPhone(),
+      role: "technician",
+      city: $("citySelect").value,
+      dailyRate: resolvedRate()
+    });
+    await profiles.updateSelf({ availability_status: $("availabilityToggle").checked });
+    state.profileExists = true;
+
+    // Work entries added before the profile existed go in now, in order.
+    for (const entry of state.pendingWork.splice(0)) {
+      try { await workHistory.add(entry); }
+      catch (error) { RoboMonitor.captureException(error, { operation: "flushPendingWork" }); }
+    }
+
+    // Skills go through replaceMine(), which writes technician_skills; a
+    // trigger (011) rebuilds skill_passports.skills_array from those rows.
+    // Writing the array directly from here is what corrupted it into a 2-D
+    // array of [tag, level] pairs and made passports unmatchable.
+    await skillsApi.replaceMine(
+      [...state.skills.entries()]
+        .filter(([, level]) => level)
+        .map(([tag, level]) => ({ tag, level })),
+    );
+
+    await passports.save({
+      yearsExperience: $("experienceInput").value ? Number($("experienceInput").value) : null
+    });
+
+    localStorage.removeItem(DRAFT_KEY);
+
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-rotate"></i> Update my profile';
+    showPassport();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "saveProfile" });
+    banner($("formMessage"), error instanceof ApiError ? error.message : "Could not save. Please try again.", "error");
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-check-circle"></i> Complete Onboarding';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The passport, shown after saving
+// ---------------------------------------------------------------------------
+
+const LEVEL_WORD = { L1: "Basic", L2: "Working", L3: "Advanced", L4: "Expert" };
+
+function levelLabel(level) {
+  // levelGuide comes from the database and is only loaded if the person opened
+  // the L1-L4 helper. Fall back to the short word rather than showing a bare
+  // code, but never invent a definition — the database stays authoritative.
+  const fromDb = levelGuide.find((g) => g.level === level)?.label;
+  return `${level} · ${fromDb ?? LEVEL_WORD[level] ?? ""}`.trim().replace(/ ·\s*$/, "");
+}
+
+function showPassport() {
+  const chosen = chosenSkills();
+
+  $("ppName").textContent = $("nameInput").value.trim();
+
+  const rate = resolvedRate();
+  $("ppMeta").textContent = [
+    $("citySelect").value || "—",
+    rate ? `₹${Number(rate).toLocaleString("en-IN")}/day` : null,
+    $("experienceInput").value ? `${$("experienceInput").value} yrs` : null,
+  ].filter(Boolean).join(" · ");
+
+  // Honest badge. "Registered" is not "Verified", and saying so here is the
+  // same message the client dashboard shows — one story to both sides.
+  $("ppBadges").innerHTML = `
+    <span class="px-2 py-0.5 rounded-full text-[11px] bg-blue-50 text-blue-700 font-semibold">
+      <i class="fas fa-id-card"></i> Registered</span>
+    ${state.certificateUploaded
+      ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">Certificate under review</span>`
+      : `<span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-500">No certificate yet</span>`}
+    <span class="px-2 py-0.5 rounded-full text-[11px] ${$("availabilityToggle").checked
+      ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-500"}">
+      ${$("availabilityToggle").checked ? "Available" : "Not available"}</span>`;
+
+  $("ppSkills").innerHTML = chosen.map((tag) => {
+    const c = COMPETENCY_BY_TAG.get(tag);
+    const brands = (DETAILS_OF.get(tag) ?? [])
+      .filter((d) => state.skills.has(d))
+      .map((d) => c?.details.find((x) => x.tag === d)?.label ?? d);
+
+    return `
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-sm text-slate-700">${escapeHtml(c?.label ?? tag)}</p>
+          ${brands.length
+            ? `<p class="text-[11px] text-slate-400">${escapeHtml(brands.join(", "))}</p>` : ""}
+        </div>
+        <span class="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-blue-600 text-white shrink-0 num">
+          ${escapeHtml(levelLabel(state.skills.get(tag)))}</span>
+      </div>`;
+  }).join("");
+
+  // #workCount is already maintained by refreshWork(). Reading it beats
+  // re-counting DOM nodes with a selector that has to stay in step with how
+  // the list happens to be marked up today.
+  const workCount = Number($("workCount").textContent) || 0;
+  $("ppWork").innerHTML = workCount
+    ? `<i class="fas fa-building text-slate-300"></i> ${workCount} previous ${workCount === 1 ? "engagement" : "engagements"} on record`
+    : `<i class="fas fa-circle-exclamation text-amber-400"></i> No previous work added &mdash; plants read this first. Add one to get matched sooner.`;
+
+  $("profileForm").classList.add("hidden");
+  $("passportView").classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+$("editPassportBtn").addEventListener("click", () => {
+  $("passportView").classList.add("hidden");
+  $("profileForm").classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+
+(async function boot() {
+  try {
+    const user = await auth.currentUser();
+    if (user) {
+      state.phone = user.phone ? `+${user.phone.replace(/^\+/, "")}` : null;
+      RoboMonitor.setUser({ id: user.id, role: "technician" });
+      await enterFormMode();
+    } else if (PREVIEW) {
+      await enterFormMode();
+    }
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "boot" });
+  }
+})();
+</script>
+</body>
+</html>

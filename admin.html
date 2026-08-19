@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations — RoboCADer Pro</title>
+<meta name="robots" content="noindex, nofollow">
+
+<!--
+  INTERNAL OPERATIONS CONSOLE.
+
+  Access is enforced by the DATABASE, not by this page. Every read goes through
+  an admin_* view carrying an is_admin() predicate, and every write is behind an
+  admin RLS policy. Hiding the page would be theatre; a non-admin who opens it
+  simply gets empty results and refused writes.
+
+  noindex because there is no reason for this to appear in search results.
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  .num { font-variant-numeric: tabular-nums; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<script src="/js/config.js"></script>
+<script src="/js/monitoring.js"></script>
+</head>
+
+<body class="bg-slate-50 text-slate-800">
+
+<!-- ============ sign in ============ -->
+<section id="authPanel" class="min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-sm w-full bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="bg-slate-900 p-2.5 rounded-xl"><i class="fas fa-sliders text-white"></i></div>
+      <div>
+        <h1 class="text-lg font-bold">Operations</h1>
+        <p class="text-xs text-slate-500">RoboCADer Pro internal</p>
+      </div>
+    </div>
+    <div class="space-y-3">
+      <input id="emailInput" type="email" placeholder="Work email" autocomplete="email"
+             class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+      <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password"
+             class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+      <button id="loginBtn" class="w-full bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition">
+        Sign in
+      </button>
+      <div id="authMessage" class="hidden text-sm rounded-xl p-3"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ not an admin ============ -->
+<section id="denyPanel" class="hidden min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-6 text-center">
+    <i class="fas fa-lock text-3xl text-slate-300"></i>
+    <h2 class="text-lg font-bold mt-3">This account is not an administrator</h2>
+    <p class="text-sm text-slate-500 mt-2" id="denyText">
+      Operations access is granted by an existing administrator.
+    </p>
+    <!--
+      Hidden unless can_claim_admin() says yes. A person not on the allowlist
+      never learns a claim path exists — showing a button and refusing the
+      click tells them there is a door and that they were measured against a
+      list.
+    -->
+    <button id="claimBtn"
+            class="hidden w-full mt-5 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
+      Make me an administrator
+    </button>
+    <div id="denyMessage" class="hidden text-sm rounded-xl p-3 mt-3"></div>
+    <button id="denySignOut" class="mt-4 text-sm text-slate-500 hover:text-slate-800">Sign out</button>
+  </div>
+</section>
+
+<!-- ============ console ============ -->
+<div id="console" class="hidden">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
+      <div class="bg-slate-900 p-2 rounded-lg"><i class="fas fa-sliders text-white text-sm"></i></div>
+      <div class="min-w-0">
+        <p class="font-bold leading-tight">Operations</p>
+        <p class="text-xs text-slate-500 leading-tight" id="whoami"></p>
+      </div>
+      <button id="refreshBtn" class="ml-auto text-sm text-slate-500 hover:text-slate-900">
+        <i class="fas fa-rotate"></i> Refresh
+      </button>
+      <button id="signOutBtn" class="text-sm text-slate-500 hover:text-slate-900">Sign out</button>
+    </div>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto">
+      <button data-tab="technicians" class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">Technicians</button>
+      <button data-tab="projects"    class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">Projects</button>
+      <button data-tab="pricing"     class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">Pricing <span id="pricingCount" class="num text-amber-600"></span></button>
+      <button data-tab="timesheets"  class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">Timesheets</button>
+      <button data-tab="invoices"    class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">Invoices</button>
+      <button data-tab="settings"    class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">Settings</button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+    <section data-panel="technicians"><div id="techList" class="space-y-3"></div></section>
+
+    <section data-panel="projects" class="hidden"><div id="projList" class="space-y-3"></div></section>
+
+    <!-- PRICING. A role a plant has posted is invisible to every professional
+         until InChi sets what the professional will be paid. This is that
+         step. The client's rate is on the left; the payout you type is what
+         appears in the Offers tab; the difference is the margin. -->
+    <section data-panel="pricing" class="hidden">
+      <p class="text-sm text-slate-500 mb-4">Roles wait here until priced. Professionals see a role only after you set its payout — and only ever the payout, never the client's rate.</p>
+      <div id="reqList" class="space-y-3"></div>
+    </section>
+
+    <section data-panel="timesheets" class="hidden">
+      <div class="bg-white rounded-2xl shadow-sm p-5 mb-5">
+        <h3 class="font-bold mb-4">New timesheet</h3>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="lg:col-span-2">
+            <label class="text-xs font-medium text-slate-600">Project</label>
+            <select id="tsProject" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none"></select>
+          </div>
+          <div class="lg:col-span-2">
+            <label class="text-xs font-medium text-slate-600">Technician</label>
+            <select id="tsTech" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Start date</label>
+            <input id="tsStart" type="date" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">End date</label>
+            <input id="tsEnd" type="date" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Days worked</label>
+            <input id="tsDays" type="number" step="0.5" min="0" placeholder="18" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Holidays</label>
+            <input id="tsHolidays" type="number" min="0" placeholder="2" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Extra hours</label>
+            <input id="tsExtra" type="number" step="0.5" min="0" placeholder="6" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Client rate / day</label>
+            <input id="tsClientRate" type="number" placeholder="5000" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Payout / day</label>
+            <input id="tsTechRate" type="number" placeholder="3750" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Client OT / hour</label>
+            <input id="tsClientOt" type="number" placeholder="600" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-600">Payout OT / hour</label>
+            <input id="tsTechOt" type="number" placeholder="450" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none">
+          </div>
+        </div>
+        <div id="tsPreview" class="mt-4 text-sm text-slate-500"></div>
+        <div id="tsMessage" class="hidden text-sm rounded-xl p-3 mt-3"></div>
+        <button id="tsCreateBtn" class="mt-4 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-blue-700 transition">
+          Create timesheet
+        </button>
+      </div>
+      <div id="tsList" class="space-y-3"></div>
+    </section>
+
+    <section data-panel="invoices" class="hidden"><div id="invList" class="space-y-3"></div></section>
+
+    <section data-panel="settings" class="hidden">
+      <div class="bg-white rounded-2xl shadow-sm p-5 max-w-lg">
+        <h3 class="font-bold mb-1">Billing identity</h3>
+        <p class="text-xs text-slate-500 mb-4">Appears on every invoice. Blank values make invoices legally useless.</p>
+        <div class="space-y-3">
+          <div><label class="text-xs font-medium text-slate-600">Legal name</label>
+            <input id="setName" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none"></div>
+          <div><label class="text-xs font-medium text-slate-600">Registered address</label>
+            <textarea id="setAddress" rows="2" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none resize-y"></textarea></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-xs font-medium text-slate-600">GSTIN</label>
+              <input id="setGstin" placeholder="29AABCI1234A1Z5" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none"></div>
+            <div><label class="text-xs font-medium text-slate-600">PAN</label>
+              <input id="setPan" placeholder="AABCI1234A" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none"></div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div><label class="text-xs font-medium text-slate-600">SAC code</label>
+              <input id="setSac" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none"></div>
+            <div><label class="text-xs font-medium text-slate-600">TDS section</label>
+              <input id="setTdsSection" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none"></div>
+            <div><label class="text-xs font-medium text-slate-600">TDS rate %</label>
+              <input id="setTdsRate" type="number" step="0.01" class="w-full mt-1 px-3 py-2 border-2 border-slate-200 rounded-lg num focus:border-blue-500 focus:outline-none"></div>
+          </div>
+          <div id="setMessage" class="hidden text-sm rounded-xl p-3"></div>
+          <button id="setSaveBtn" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-blue-700 transition">Save</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=7";
+
+const cfg = window.ROBOCADER_CONFIG ?? {};
+RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "admin" });
+
+const $ = (id) => document.getElementById(id);
+const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+// formatSpan() from api.js is month-precision ("Aug 2026 – Aug 2026"), which is
+// useless for a billing period that lives inside one month. Timesheets need days.
+const dayFmt = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" });
+const dateRange = (a, b) => (a && b ? `${dayFmt.format(new Date(a))} – ${dayFmt.format(new Date(b))}` : "—");
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+const BANNER = {
+  info: "bg-slate-100 text-slate-700",
+  success: "bg-green-50 text-green-700 border border-green-200",
+  error: "bg-red-50 text-red-700 border border-red-200",
+};
+function banner(node, text, kind = "info") {
+  node.className = `text-sm rounded-xl p-3 ${BANNER[kind]}`;
+  node.textContent = text;
+  node.classList.remove("hidden");
+}
+
+let cache = { technicians: [], projects: [], timesheets: [], invoices: [] };
+
+// ---------- auth ----------
+
+$("loginBtn").addEventListener("click", async () => {
+  const button = $("loginBtn");
+  button.disabled = true;
+  try {
+    await auth.signInWithPassword($("emailInput").value.trim(), $("passwordInput").value);
+    await route();
+  } catch (error) {
+    banner($("authMessage"), error instanceof ApiError ? error.message : "Could not sign in.", "error");
+  } finally { button.disabled = false; }
+});
+
+$("signOutBtn").addEventListener("click", async () => { await auth.signOut(); location.reload(); });
+$("denySignOut").addEventListener("click", async () => { await auth.signOut(); location.reload(); });
+
+$("claimBtn").addEventListener("click", async () => {
+  const button = $("claimBtn");
+  button.disabled = true;
+  try {
+    const message = await admin.claim();
+    banner($("denyMessage"), message ?? "You are now an administrator.", "success");
+    setTimeout(() => location.reload(), 1200);
+  } catch (error) {
+    banner($("denyMessage"), error instanceof ApiError ? error.message : "Could not claim.", "error");
+    button.disabled = false;
+  }
+});
+
+// ---------- tabs ----------
+
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((t) =>
+    t.className = `tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap ${
+      t.dataset.tab === name ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`);
+  document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+// ---------- renderers ----------
+
+const VERIFY = {
+  verified: "bg-green-50 text-green-700",
+  pending:  "bg-amber-50 text-amber-700",
+  rejected: "bg-red-50 text-red-700",
+};
+
+function renderTechnicians() {
+  if (!cache.technicians.length) {
+    $("techList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No technicians registered yet.</div>`;
+    return;
+  }
+  $("techList").innerHTML = cache.technicians.map((t) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4">
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold">${esc(t.full_name)}
+          <span class="ml-2 px-2 py-0.5 rounded-full text-[11px] font-semibold ${VERIFY[t.verified_status] ?? "bg-slate-100 text-slate-500"}">
+            ${esc(t.verified_status ?? "no passport")}</span>
+        </p>
+        <p class="text-xs text-slate-500 num">${esc(t.phone_number ?? "—")} · ${esc(t.location_city ?? "—")}
+          · ${t.daily_rate ? inr.format(t.daily_rate) + "/day" : "rate not set"}
+          · ${t.work_entries} work entries</p>
+        <div class="flex flex-wrap gap-1 mt-1.5">
+          ${(t.skills_array ?? []).slice(0, 8).map((s) =>
+            `<span class="px-2 py-0.5 rounded bg-slate-50 text-[11px] text-slate-600">${esc(s.replace(/_/g," "))}</span>`).join("")}
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button data-verify="${t.id}" data-status="verified"
+                class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700">Verify</button>
+        <button data-verify="${t.id}" data-status="rejected"
+                class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-red-50 hover:text-red-600">Reject</button>
+      </div>
+    </div>`).join("");
+}
+
+
+const REQ_STATUS = {
+  open: "bg-blue-50 text-blue-700", partially_filled: "bg-amber-50 text-amber-700",
+  filled: "bg-green-50 text-green-700", cancelled: "bg-slate-100 text-slate-500",
+};
+function renderRequirements() {
+  const rows = cache.requirements ?? [];
+  const unpriced = rows.filter((r) => r.technician_day_rate == null && r.status !== "cancelled").length;
+  $("pricingCount").textContent = unpriced ? `(${unpriced})` : "";
+  if (!rows.length) {
+    $("reqList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No roles posted yet.</div>`;
+    return;
+  }
+  $("reqList").innerHTML = rows.map((r) => {
+    const priced = r.technician_day_rate != null;
+    const margin = priced ? Number(r.client_day_rate) - Number(r.technician_day_rate) : null;
+    const marginPct = priced && Number(r.client_day_rate) > 0 ? Math.round(margin / Number(r.client_day_rate) * 100) : null;
+    return `
+    <div class="bg-white rounded-2xl shadow-sm p-4 ${priced ? "" : "border-2 border-amber-200"}">
+      <div class="flex flex-wrap items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">${esc(r.role_title)}
+            <span class="ml-2 px-2 py-0.5 rounded-lg text-[11px] ${REQ_STATUS[r.status] ?? "bg-slate-100 text-slate-600"}">${esc(r.status)}</span>
+            ${priced ? "" : `<span class="ml-1 px-2 py-0.5 rounded-lg text-[11px] bg-amber-100 text-amber-800">unpriced — hidden from professionals</span>`}
+          </p>
+          <p class="text-sm text-slate-500 mt-0.5">${esc(r.project_title)} · ${esc(r.client_name)} · ${esc(r.location_city ?? "—")} · ${esc(r.starts_on)} → ${esc(r.ends_on)} · ${r.headcount} seat${r.headcount === 1 ? "" : "s"}, ${r.filled} filled</p>
+          <p class="text-xs text-slate-400 mt-1">Skills: ${(r.required_skills ?? []).map(esc).join(", ") || "—"} · min ${esc(r.min_skill_level ?? "L2")}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-[11px] uppercase tracking-wide text-slate-400">Client pays / day</p>
+          <p class="num font-semibold text-slate-800">₹${Number(r.client_day_rate).toLocaleString("en-IN")}</p>
+          ${r.client_ot_hour_rate ? `<p class="text-xs text-slate-400 num">OT ₹${Number(r.client_ot_hour_rate).toLocaleString("en-IN")}/h</p>` : ""}
+        </div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-end gap-3">
+        <div>
+          <label class="text-[11px] uppercase tracking-wide text-slate-400">Payout / day</label>
+          <input type="number" min="1" step="1" data-payout="${r.id}" value="${priced ? Number(r.technician_day_rate) : ""}" placeholder="e.g. 4500"
+                 class="mt-1 w-32 px-3 py-2 border-2 border-slate-200 rounded-xl num focus:border-slate-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-[11px] uppercase tracking-wide text-slate-400">Payout OT / hour</label>
+          <input type="number" min="0" step="1" data-payout-ot="${r.id}" value="${priced ? Number(r.technician_ot_hour_rate ?? 0) : ""}" placeholder="0"
+                 class="mt-1 w-28 px-3 py-2 border-2 border-slate-200 rounded-xl num focus:border-slate-500 focus:outline-none">
+        </div>
+        <button data-price="${r.id}"
+                class="px-4 py-2 rounded-xl text-sm font-semibold ${priced ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-900 text-white hover:bg-slate-700"}">
+          ${priced ? "Update payout" : "Set payout & publish"}
+        </button>
+        ${priced ? `<span class="text-sm text-slate-500 num">Margin ₹${margin.toLocaleString("en-IN")}/day${marginPct != null ? ` (${marginPct}%)` : ""}</span>` : ""}
+        <span data-price-msg="${r.id}" class="text-sm"></span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderProjects() {
+  if (!cache.projects.length) {
+    $("projList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No projects posted yet.</div>`;
+    return;
+  }
+  $("projList").innerHTML = cache.projects.map((p) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <div class="flex flex-wrap items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">${esc(p.title)}
+            <span class="ml-2 px-2 py-0.5 rounded-lg text-[11px] bg-slate-100 text-slate-600">${esc(p.status)}</span></p>
+          <p class="text-xs text-slate-500 num">${esc(p.client_name)} · ${esc(p.location_city ?? "—")}
+            · ${p.duration_days} days · ${p.matches} matched · ${p.timesheets} timesheets</p>
+        </div>
+        <div class="text-right num">
+          <p class="text-sm">Bill <span class="font-semibold">${inr.format(p.total_budget)}</span></p>
+          <p class="text-xs text-slate-500">
+            Payout ${p.technician_cost ? inr.format(p.technician_cost) : "—"}
+            · Margin ${p.platform_margin ? inr.format(p.platform_margin) : "—"}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+        <label class="text-xs text-slate-500">Set margin</label>
+        <input type="number" min="0" max="99" step="1" value="25" data-margin-input="${p.id}"
+               class="w-20 px-2 py-1 border-2 border-slate-200 rounded-lg text-sm num focus:border-blue-500 focus:outline-none">
+        <span class="text-xs text-slate-500">%</span>
+        <button data-margin="${p.id}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">Apply</button>
+      </div>
+    </div>`).join("");
+}
+
+const TS_STATUS = {
+  draft: "bg-slate-100 text-slate-600", submitted: "bg-blue-50 text-blue-700",
+  approved: "bg-green-50 text-green-700", invoiced: "bg-indigo-50 text-indigo-700",
+  rejected: "bg-red-50 text-red-700",
+};
+
+function renderTimesheets() {
+  if (!cache.timesheets.length) {
+    $("tsList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No timesheets yet.</div>`;
+    return;
+  }
+  $("tsList").innerHTML = cache.timesheets.map((t) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4">
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold text-sm">${esc(t.project_title)}
+          <span class="ml-2 px-2 py-0.5 rounded-lg text-[11px] ${TS_STATUS[t.status] ?? ""}">${esc(t.status)}</span></p>
+        <p class="text-xs text-slate-500 num">${esc(t.technician_name)}
+          · ${esc(dateRange(t.period_start, t.period_end))}
+          · ${t.days_worked} days${t.extra_hours > 0 ? ` + ${t.extra_hours}h OT` : ""}</p>
+      </div>
+      <div class="text-right num text-sm">
+        <p>Bill <span class="font-semibold">${inr.format(t.client_amount)}</span></p>
+        <p class="text-xs text-slate-500">Payout ${inr.format(t.technician_amount)} · Margin ${inr.format(t.margin_amount)} (${t.margin_pct ?? "—"}%)</p>
+      </div>
+      <div class="flex gap-2">
+        ${t.status !== "approved" && t.status !== "invoiced"
+          ? `<button data-approve-ts="${t.id}" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700">Approve</button>` : ""}
+        ${t.status === "approved"
+          ? `<button data-invoice="${t.id}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">Invoice client</button>` : ""}
+        <button data-advice="${t.id}" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200">Payment advice</button>
+      </div>
+    </div>`).join("");
+}
+
+function renderInvoices() {
+  if (!cache.invoices.length) {
+    $("invList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No invoices raised yet.</div>`;
+    return;
+  }
+  $("invList").innerHTML = cache.invoices.map((i) => {
+    const advice = i.kind === "technician_payment_advice";
+    return `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4">
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold text-sm num">${esc(i.invoice_no)}
+          <span class="ml-2 px-2 py-0.5 rounded-lg text-[11px] bg-slate-100 text-slate-600">${advice ? "payment advice" : "tax invoice"}</span>
+          <span class="ml-1 px-2 py-0.5 rounded-lg text-[11px] bg-slate-100 text-slate-600">${esc(i.status)}</span></p>
+        <p class="text-xs text-slate-500">${esc(i.buyer_name)} · ${esc(i.project_title ?? "—")} · ${esc(i.issue_date)}</p>
+      </div>
+      <div class="text-right num text-sm">
+        ${advice
+          ? `<p>Gross ${inr.format(i.taxable_value)}</p>
+             <p class="text-xs text-slate-500">TDS ${esc(i.tds_section ?? "")} ${i.tds_rate ?? 0}% = ${inr.format(i.tds_amount)} → Net <span class="font-semibold">${inr.format(i.net_payable)}</span></p>`
+          : `<p>Taxable ${inr.format(i.taxable_value)}</p>
+             <p class="text-xs text-slate-500">${i.igst > 0 ? `IGST ${inr.format(i.igst)}` : `CGST ${inr.format(i.cgst)} + SGST ${inr.format(i.sgst)}`} → <span class="font-semibold">${inr.format(i.total_amount)}</span></p>`}
+      </div>
+      ${i.status === "draft" ? `<button data-issue="${i.id}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">Mark issued</button>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function fillTimesheetSelects() {
+  $("tsProject").innerHTML = cache.projects.map((p) =>
+    `<option value="${p.id}">${esc(p.title)} — ${esc(p.client_name)}</option>`).join("")
+    || `<option value="">No projects</option>`;
+  $("tsTech").innerHTML = cache.technicians.map((t) =>
+    `<option value="${t.id}">${esc(t.full_name)}</option>`).join("")
+    || `<option value="">No technicians</option>`;
+}
+
+function previewTimesheet() {
+  const days = Number($("tsDays").value) || 0;
+  const extra = Number($("tsExtra").value) || 0;
+  const cr = Number($("tsClientRate").value) || 0;
+  const tr = Number($("tsTechRate").value) || 0;
+  const co = Number($("tsClientOt").value) || 0;
+  const to = Number($("tsTechOt").value) || 0;
+  const bill = days * cr + extra * co;
+  const payout = days * tr + extra * to;
+  $("tsPreview").innerHTML = bill
+    ? `<span class="num">Bill <b>${inr.format(bill)}</b> · Payout ${inr.format(payout)} · Margin <b>${inr.format(bill - payout)}</b> (${bill ? Math.round(((bill - payout) / bill) * 100) : 0}%)</span>`
+    : "";
+}
+["tsDays","tsExtra","tsClientRate","tsTechRate","tsClientOt","tsTechOt"]
+  .forEach((id) => $(id).addEventListener("input", previewTimesheet));
+
+$("tsCreateBtn").addEventListener("click", async () => {
+  const button = $("tsCreateBtn");
+  // Say what is missing in the operator's words. The database now refuses
+  // these too (023), but a refusal is a floor; the form should not need it.
+  const missing =
+      !$("tsProject").value ? "Choose the project."
+    : !$("tsTech").value    ? "Choose the professional this timesheet is for."
+    : !$("tsStart").value || !$("tsEnd").value ? "Enter the period start and end."
+    : $("tsEnd").value < $("tsStart").value ? "The period ends before it starts."
+    : !(Number($("tsDays").value) > 0) ? "Enter the days worked."
+    : !(Number($("tsClientRate").value) > 0) || !(Number($("tsTechRate").value) > 0) ? "Enter both day rates."
+    : null;
+  if (missing) { banner($("tsMessage"), missing, "error"); return; }
+  button.disabled = true;
+  try {
+    await admin.createTimesheet({
+      projectId: $("tsProject").value,
+      technicianId: $("tsTech").value,
+      periodStart: $("tsStart").value,
+      periodEnd: $("tsEnd").value,
+      daysWorked: Number($("tsDays").value) || 0,
+      holidays: Number($("tsHolidays").value) || 0,
+      extraHours: Number($("tsExtra").value) || 0,
+      clientDayRate: Number($("tsClientRate").value) || 0,
+      technicianDayRate: Number($("tsTechRate").value) || 0,
+      clientOtRate: Number($("tsClientOt").value) || 0,
+      technicianOtRate: Number($("tsTechOt").value) || 0,
+    });
+    banner($("tsMessage"), "Timesheet created.", "success");
+    await loadAll();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "createTimesheet" });
+    banner($("tsMessage"), error instanceof ApiError ? error.message : "Could not create timesheet.", "error");
+  } finally { button.disabled = false; }
+});
+
+// ---------- settings ----------
+
+async function loadSettings() {
+  const org = await admin.orgSettings();
+  if (!org) return;
+  $("setName").value = org.legal_name ?? "";
+  $("setAddress").value = org.address ?? "";
+  $("setGstin").value = org.gstin ?? "";
+  $("setPan").value = org.pan ?? "";
+  $("setSac").value = org.default_sac ?? "";
+  $("setTdsSection").value = org.default_tds_section ?? "";
+  $("setTdsRate").value = org.default_tds_rate ?? "";
+}
+
+$("setSaveBtn").addEventListener("click", async () => {
+  try {
+    await admin.saveOrgSettings({
+      legal_name: $("setName").value.trim(),
+      address: $("setAddress").value.trim() || null,
+      gstin: $("setGstin").value.trim().toUpperCase() || null,
+      pan: $("setPan").value.trim().toUpperCase() || null,
+      default_sac: $("setSac").value.trim(),
+      default_tds_section: $("setTdsSection").value.trim(),
+      default_tds_rate: Number($("setTdsRate").value) || 0,
+    });
+    banner($("setMessage"), "Saved.", "success");
+  } catch (error) {
+    banner($("setMessage"), error instanceof ApiError ? error.message : "Could not save.", "error");
+  }
+});
+
+// ---------- delegated actions ----------
+
+document.addEventListener("click", async (event) => {
+  const verify = event.target.closest("[data-verify]");
+  if (verify) {
+    verify.disabled = true;
+    try { await admin.setVerification(verify.dataset.verify, verify.dataset.status); await loadAll(); }
+    catch (error) { alert(error instanceof ApiError ? error.message : "Failed."); verify.disabled = false; }
+    return;
+  }
+
+  const price = event.target.closest("[data-price]");
+  if (price) {
+    const id = price.dataset.price;
+    const rate = Number(document.querySelector(`[data-payout="${id}"]`).value);
+    const ot   = Number(document.querySelector(`[data-payout-ot="${id}"]`).value || 0);
+    const msg  = document.querySelector(`[data-price-msg="${id}"]`);
+    if (!rate || rate <= 0) { msg.textContent = "Enter the payout per day."; msg.className = "text-sm text-red-600"; return; }
+    price.disabled = true;
+    try {
+      await requirements.price(id, rate, ot);
+      msg.textContent = "Published — professionals can now see this role.";
+      msg.className = "text-sm text-green-700";
+      await loadAll();
+    } catch (error) {
+      // The database's refusals are the business answers; show them verbatim.
+      msg.textContent = error instanceof ApiError ? error.message : "Could not save the payout.";
+      msg.className = "text-sm text-red-600";
+    } finally { price.disabled = false; }
+    return;
+  }
+
+  const margin = event.target.closest("[data-margin]");
+  if (margin) {
+    const pct = Number(document.querySelector(`[data-margin-input="${margin.dataset.margin}"]`).value);
+    margin.disabled = true;
+    try { await admin.setMargin(margin.dataset.margin, pct); await loadAll(); }
+    catch (error) { alert(error instanceof ApiError ? error.message : "Failed."); margin.disabled = false; }
+    return;
+  }
+
+  const approve = event.target.closest("[data-approve-ts]");
+  if (approve) {
+    approve.disabled = true;
+    try { await admin.approveTimesheet(approve.dataset.approveTs); await loadAll(); }
+    catch (error) { alert(error instanceof ApiError ? error.message : "Failed."); approve.disabled = false; }
+    return;
+  }
+
+  const invoice = event.target.closest("[data-invoice]");
+  if (invoice) {
+    invoice.disabled = true;
+    try { await admin.issueClientInvoice(invoice.dataset.invoice); await loadAll(); showTab("invoices"); }
+    catch (error) { alert(error instanceof ApiError ? error.message : "Failed."); invoice.disabled = false; }
+    return;
+  }
+
+  const advice = event.target.closest("[data-advice]");
+  if (advice) {
+    advice.disabled = true;
+    try { await admin.issuePaymentAdvice(advice.dataset.advice); await loadAll(); showTab("invoices"); }
+    catch (error) { alert(error instanceof ApiError ? error.message : "Failed."); advice.disabled = false; }
+    return;
+  }
+
+  const issue = event.target.closest("[data-issue]");
+  if (issue) {
+    issue.disabled = true;
+    try { await admin.markInvoiceIssued(issue.dataset.issue); await loadAll(); }
+    catch (error) { alert(error instanceof ApiError ? error.message : "Failed."); issue.disabled = false; }
+  }
+});
+
+$("refreshBtn").addEventListener("click", () => loadAll());
+
+// ---------- load ----------
+
+async function loadAll() {
+  try {
+    const [technicians, projects, timesheets, invoices, reqs] = await Promise.all([
+      admin.technicians(), admin.projects(), admin.timesheets(), admin.invoices(), admin.requirements(),
+    ]);
+    cache = { technicians, projects, timesheets, invoices, requirements: reqs };
+    renderTechnicians(); renderProjects(); renderRequirements(); renderTimesheets(); renderInvoices();
+    fillTimesheetSelects();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "admin.loadAll" });
+  }
+}
+
+async function route() {
+  const user = await auth.currentUser();
+  if (!user) { $("authPanel").classList.remove("hidden"); return; }
+
+  $("authPanel").classList.add("hidden");
+  const profile = await profiles.me();
+
+  if (profile?.role_type !== "admin") {
+    $("denyPanel").classList.remove("hidden");
+    if (await admin.canClaim()) {
+      $("claimBtn").classList.remove("hidden");
+      $("denyText").textContent =
+        "This address is authorised to operate the platform. Claim it to continue.";
+    }
+    return;
+  }
+
+  $("denyPanel").classList.add("hidden");
+  $("console").classList.remove("hidden");
+  $("whoami").textContent = profile.full_name;
+  RoboMonitor.setUser({ id: user.id, role: "admin" });
+  showTab("technicians");
+  await Promise.all([loadAll(), loadSettings()]);
+}
+
+route().catch((error) => RoboMonitor.captureException(error, { operation: "admin.route" }));
+</script>
+</body>
+</html>

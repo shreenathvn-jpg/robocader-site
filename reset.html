@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set a new password — RoboCADer Pro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- api.js reads window.ROBOCADER_CONFIG; without this the client is created
+     with no URL and the session check never resolves. -->
+<script src="/js/config.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 w-full max-w-md">
+  <div class="flex items-center gap-3 mb-6">
+    <div class="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold">R</div>
+    <div>
+      <h1 class="text-lg font-bold text-slate-800">Set a new password</h1>
+      <p class="text-sm text-slate-500">RoboCADer Pro</p>
+    </div>
+  </div>
+
+  <!-- Shown while we check whether this visit carries a valid recovery session -->
+  <div id="checking" class="text-sm text-slate-500">Checking your reset link…</div>
+
+  <!-- No session: they came here directly, or the link was used/expired -->
+  <div id="noSession" class="hidden">
+    <p class="text-sm text-slate-600 mb-4">
+      This page works only from a <strong>password reset email</strong>.
+      Enter your email and we will send you one.
+    </p>
+    <input id="emailInput" type="email" autocomplete="email" placeholder="Your email"
+           class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
+    <button id="sendBtn" class="w-full py-3 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-700">
+      Email me a reset link
+    </button>
+  </div>
+
+  <!-- Valid recovery session: let them set the password -->
+  <div id="form" class="hidden">
+    <p class="text-sm text-slate-600 mb-4">
+      You are verified as <strong id="whoami"></strong>. Choose your new password.
+    </p>
+    <div class="relative mb-3">
+      <input id="pwInput" type="password" autocomplete="new-password" placeholder="New password (min 8 characters)"
+             class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+      <button id="showBtn" type="button"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-800">Show</button>
+    </div>
+    <button id="saveBtn" class="w-full py-3 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-700">
+      Save new password
+    </button>
+  </div>
+
+  <!-- Saved -->
+  <div id="done" class="hidden">
+    <p class="text-sm text-emerald-700 bg-emerald-50 rounded-xl p-4 mb-4">
+      Password saved. You can now sign in with it anywhere.
+    </p>
+    <a href="/admin.html" class="block text-center w-full py-3 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-700">
+      Go to sign in
+    </a>
+  </div>
+
+  <p id="msg" class="hidden mt-4 text-sm rounded-xl p-3"></p>
+</div>
+
+<script type="module">
+import { supabase } from "/js/api.js?v=7";
+
+const $ = (id) => document.getElementById(id);
+const show = (id) => { for (const s of ["checking","noSession","form","done"]) $(s).classList.toggle("hidden", s !== id); };
+const say = (text, bad) => {
+  const m = $("msg");
+  m.textContent = text;
+  m.className = "mt-4 text-sm rounded-xl p-3 " + (bad ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700");
+};
+
+// The recovery link lands with tokens in the hash; the client exchanges them
+// on load. A short wait covers that exchange before we judge "no session".
+setTimeout(async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      $("whoami").textContent = session.user.email;
+      show("form");
+    } else {
+      show("noSession");
+    }
+  } catch (e) {
+    show("noSession");
+    say("Could not check your link: " + (e?.message ?? e), true);
+  }
+}, 600);
+
+$("showBtn").onclick = () => {
+  const i = $("pwInput");
+  i.type = i.type === "password" ? "text" : "password";
+  $("showBtn").textContent = i.type === "password" ? "Show" : "Hide";
+};
+
+$("saveBtn").onclick = async () => {
+  const pw = $("pwInput").value;
+  if (pw.length < 8) { say("Use at least 8 characters.", true); return; }
+  $("saveBtn").disabled = true;
+  const { error } = await supabase.auth.updateUser({ password: pw });
+  $("saveBtn").disabled = false;
+  if (error) { say(error.message, true); return; }
+  show("done");
+  $("msg").classList.add("hidden");
+};
+
+$("sendBtn").onclick = async () => {
+  const email = $("emailInput").value.trim();
+  if (!email) { say("Enter your email first.", true); return; }
+  $("sendBtn").disabled = true;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${location.origin}/reset.html`,
+  });
+  $("sendBtn").disabled = false;
+  // Same message either way — this page must not reveal which emails exist.
+  if (error) { say(error.message, true); return; }
+  say("If that email has an account, a reset link is on its way. Open the newest email and click it once.");
+};
+</script>
+</body>
+</html>

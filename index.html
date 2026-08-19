@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FFFFFF">
+<title>RoboCADer Pro — Build your industrial Skill Passport</title>
+<meta name="description" content="Grade your industrial skills L1 to L4, record the plants you have worked at, and get matched to short-term projects across India. Contract, GST paperwork and milestone payments handled.">
+
+<!--
+  DESIGN NOTES — the reasoning, so future edits do not undo it.
+
+  RESTRAINT IS THE POINT. The reference (Urban Company) reads as expensive
+  because of what it leaves out: no borders, no card shadows, no colour except
+  where you are meant to act. Earlier versions of this page boxed everything in
+  outlines, which made a marketing page feel like a form. Boxes are gone;
+  hierarchy comes from type size, weight and whitespace.
+
+  TYPE DOES THE WORK. One very large headline set tight (leading-[0.95]),
+  one supporting line, then a drop to small text. No mid-sized text competing.
+
+  ONE ACCENT COLOUR. Blue appears on actions and almost nowhere else. When
+  every icon is blue, nothing is emphasised.
+
+  PHOTOGRAPHY SELLS, ICONS LABEL. The image grid is asymmetric on purpose —
+  equal tiles read as a catalogue, varied ones read as a composition.
+
+  STOCK IS A PLACEHOLDER. These are Unsplash images. Photographs of real InChi
+  deployments on Indian plant floors will outperform them substantially.
+
+  NO INVENTED PROOF. No rating, no customer count, no testimonials — there are
+  no technicians and no completed projects yet. Add real numbers when they
+  exist; never fabricate them.
+
+  THE PAGE SELLS TO PROFESSIONALS FIRST. Supply is priority one: a plant that
+  posts a requirement against an empty pool leaves and does not come back,
+  while a professional who registers early costs nothing to keep. So the hero,
+  the primary button and the first section below the fold all address the
+  technician, and the plant is offered a quiet second door. Flip this back only
+  when the pool is deep enough to fill a requirement the day it lands.
+
+  THE SKILL LIST IS RENDERED FROM THE TAXONOMY, not typed into the HTML. A
+  marketing page that lists skills the registration form does not offer is a
+  promise the product breaks on the next click.
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- ?v= is a cache buster. The taxonomy just changed shape, and a browser
+     holding the previous skill-tags.js would find no competencies and render
+     an empty skill list. Bump this whenever the taxonomy changes. -->
+<script src="/js/skill-tags.js?v=4"></script>
+<!-- The landing page is where Supabase email links land (Site URL). Without
+     the client loaded here, a magic link's tokens arrive in the URL hash and
+     evaporate on the first navigation — signing the person in to nothing. -->
+<script type="module">
+import { supabase, profiles } from "/js/api.js?v=7";
+// Email links (confirmation, magic link, recovery) land HERE — the Site URL —
+// with tokens in the hash. This page's only job for such an arrival is to
+// hand the person to the page that can actually finish what they started:
+//   recovery            → /reset.html
+//   no profile yet      → /technician-onboard.html (registration continues)
+//   technician / client → their dashboard
+//   admin               → the console
+const arrivedWithTokens = /access_token=|type=(signup|magiclink|recovery|invite)/.test(location.hash);
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === "PASSWORD_RECOVERY") { location.replace("/reset.html"); return; }
+  if (event !== "SIGNED_IN" || !session?.user || !arrivedWithTokens) return;
+  let role = null;
+  try { role = (await profiles.me())?.role_type ?? null; } catch (_) { /* no profile yet */ }
+  const next = role === "admin"      ? "/admin.html"
+             : role === "client"     ? "/client-dashboard.html"
+             : role === "technician" ? "/technician-dashboard.html"
+             :                         "/technician-onboard.html";
+  location.replace(next);
+});
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  html { -webkit-font-smoothing: antialiased; }
+  body { color: #0F172A; }
+  .shot { background: #EEF1F5; }
+  .rule { height: 1px; background: #E9EDF2; }
+  a:focus-visible, button:focus-visible { outline: 2px solid #2563EB; outline-offset: 4px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+
+<body class="bg-white">
+
+<!-- ===================== header ===================== -->
+<header class="sticky top-0 z-30 bg-white/90 backdrop-blur">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 h-[72px] flex items-center">
+    <a href="/" class="flex items-center gap-2.5">
+      <div class="bg-slate-900 w-8 h-8 rounded-lg flex items-center justify-center">
+        <i class="fas fa-industry text-white text-[13px]"></i>
+      </div>
+      <span class="font-semibold tracking-tight text-[17px]">RoboCADer&nbsp;Pro</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-8 ml-12 text-[15px] text-slate-500">
+      <a href="#skills" class="hover:text-slate-900 transition">Skills we cover</a>
+      <a href="#how" class="hover:text-slate-900 transition">How it works</a>
+      <a href="#plants" class="hover:text-slate-900 transition">For plants</a>
+    </nav>
+
+    <div class="ml-auto flex items-center gap-5">
+      <a href="/technician-onboard.html" class="hidden sm:inline text-[15px] text-slate-500 hover:text-slate-900 transition">
+        Login
+      </a>
+      <a href="/technician-onboard.html"
+         class="text-[15px] font-medium bg-slate-900 text-white px-4 py-2 rounded-full hover:bg-slate-800 transition">
+        Register free
+      </a>
+    </div>
+  </div>
+  <div class="rule"></div>
+</header>
+
+<!-- ===================== hero ===================== -->
+<section class="max-w-6xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20 pb-16">
+  <div class="grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 items-center">
+
+    <div>
+      <h1 class="text-[2.75rem] sm:text-6xl font-semibold tracking-[-0.03em] leading-[0.95]">
+        Get hired for<br>what you can<br>
+        <span class="text-slate-400">actually do</span>
+      </h1>
+
+      <p class="mt-7 text-lg sm:text-xl text-slate-500 leading-relaxed max-w-lg">
+        Grade yourself L1 to L4 across sixteen industrial skills, add the plants you
+        have worked at, and let short-term projects come to you. We handle the
+        contract, the GST paperwork and the payment.
+      </p>
+
+      <div class="mt-9 flex flex-wrap items-center gap-3">
+        <a href="/technician-onboard.html"
+           class="bg-slate-900 text-white text-[15px] font-medium px-6 py-3.5 rounded-full hover:bg-slate-800 transition">
+          Build my Skill Passport
+        </a>
+        <a href="#plants"
+           class="text-[15px] font-medium text-slate-600 px-6 py-3.5 rounded-full hover:bg-slate-100 transition">
+          I&rsquo;m hiring &rarr;
+        </a>
+      </div>
+
+      <!--
+        Only claims that are true today. "No placement fee" is true of the
+        current model (we earn the spread between the client bill and the
+        payout, never a cut of the technician) but it is a commercial promise,
+        so it is the operator's to make, not this page's.
+      -->
+      <p class="mt-6 text-[14px] text-slate-400">
+        Free to join. Takes about five minutes.
+      </p>
+    </div>
+
+    <!-- asymmetric grid: varied sizes read as a composition, not a catalogue -->
+    <div class="grid grid-cols-5 grid-rows-5 gap-2.5 h-[380px] sm:h-[460px]">
+      <img class="shot col-span-3 row-span-3 w-full h-full object-cover rounded-2xl" loading="lazy"
+           src="https://images.unsplash.com/photo-1565954786194-d22abeaac3ae?w=800&q=75&auto=format&fit=crop"
+           alt="Technician working on industrial equipment">
+      <img class="shot col-span-2 row-span-2 w-full h-full object-cover rounded-2xl" loading="lazy"
+           src="https://images.unsplash.com/photo-1646082276009-bb35409086ed?w=600&q=75&auto=format&fit=crop"
+           alt="Robotic arm on a production line">
+      <img class="shot col-span-2 row-span-3 w-full h-full object-cover rounded-2xl" loading="lazy"
+           src="https://images.unsplash.com/photo-1576666735179-f3ad352212c2?w=600&q=75&auto=format&fit=crop"
+           alt="Electrical control panel">
+      <img class="shot col-span-3 row-span-2 w-full h-full object-cover rounded-2xl" loading="lazy"
+           src="https://images.unsplash.com/photo-1613620855495-129bee8746b7?w=700&q=75&auto=format&fit=crop"
+           alt="Engineer inspecting machinery">
+    </div>
+  </div>
+</section>
+
+<!-- ===================== skills ===================== -->
+<section id="skills" class="max-w-6xl mx-auto px-5 sm:px-8 pb-20">
+  <div class="rule mb-12"></div>
+  <div class="flex flex-wrap items-end justify-between gap-4 mb-10">
+    <h2 class="text-3xl sm:text-4xl font-semibold tracking-[-0.02em]">Skills we cover</h2>
+    <p class="text-slate-400 text-[15px]">Rate each one L1 to L4</p>
+  </div>
+
+  <!-- Filled from window.ROBOCADER_COMPETENCIES so this can never claim a
+       skill the registration form does not actually offer. -->
+  <div id="skillList" class="grid sm:grid-cols-2 gap-x-12"></div>
+
+  <a href="/technician-onboard.html"
+     class="inline-block mt-10 text-[15px] font-medium text-slate-900 hover:text-slate-600 transition">
+    Rate yourself on these &rarr;
+  </a>
+</section>
+
+<!-- ===================== how it works, technician track ===================== -->
+<section id="how" class="max-w-6xl mx-auto px-5 sm:px-8 pb-20">
+  <div class="rule mb-12"></div>
+  <h2 class="text-3xl sm:text-4xl font-semibold tracking-[-0.02em]">How it works</h2>
+
+  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-10 mt-12">
+    <div>
+      <p class="text-[13px] font-medium text-slate-300">01</p>
+      <p class="text-lg font-medium mt-2">Build your passport</p>
+      <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+        Rate sixteen skills L1 to L4, add the plants you have worked at, set your day rate.
+      </p>
+    </div>
+    <div>
+      <p class="text-[13px] font-medium text-slate-300">02</p>
+      <p class="text-lg font-medium mt-2">Projects find you</p>
+      <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+        Plants post short-term work. You are matched on skill, level and how far you are from site.
+      </p>
+    </div>
+    <div>
+      <p class="text-[13px] font-medium text-slate-300">03</p>
+      <p class="text-lg font-medium mt-2">Documents at offer stage</p>
+      <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+        Aadhaar and PAN only once you have a proposal in hand — not to browse.
+      </p>
+    </div>
+    <div>
+      <p class="text-[13px] font-medium text-slate-300">04</p>
+      <p class="text-lg font-medium mt-2">Work and get paid</p>
+      <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+        A written consultant agreement, days and overtime on record, payment against milestones.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== photo + reassurance ===================== -->
+<section class="max-w-6xl mx-auto px-5 sm:px-8 pb-24">
+  <div class="rule mb-16"></div>
+  <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+    <div class="order-2 lg:order-1 grid grid-cols-2 gap-2.5">
+      <img class="shot w-full h-56 sm:h-64 object-cover rounded-2xl" loading="lazy"
+           src="https://images.unsplash.com/photo-1598299803204-b73796f43289?w=600&q=75&auto=format&fit=crop"
+           alt="Industrial professional at work">
+      <img class="shot w-full h-56 sm:h-64 object-cover rounded-2xl mt-8" loading="lazy"
+           src="https://images.unsplash.com/photo-1532634766-c2761df5daba?w=600&q=75&auto=format&fit=crop"
+           alt="Engineer on a factory floor">
+    </div>
+
+    <div class="order-1 lg:order-2">
+      <p class="text-[13px] font-medium text-slate-400 uppercase tracking-wider">Your record, not your CV</p>
+      <h2 class="text-3xl sm:text-[2.5rem] font-semibold tracking-[-0.02em] leading-[1.1] mt-3">
+        A skill you have proved once should not need proving again
+      </h2>
+      <p class="mt-5 text-lg text-slate-500 leading-relaxed max-w-md">
+        Every project you finish stays on your passport. The next plant sees the work,
+        the level and the site &mdash; not a one-page CV that says the same thing as everyone else&rsquo;s.
+      </p>
+      <a href="/technician-onboard.html"
+         class="inline-block mt-8 bg-slate-900 text-white text-[15px] font-medium px-6 py-3.5 rounded-full hover:bg-slate-800 transition">
+        Build my Skill Passport
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== for plants — the quiet second door ===================== -->
+<section id="plants" class="bg-slate-50">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 py-20">
+    <p class="text-[13px] font-medium text-slate-400 uppercase tracking-wider">For plants</p>
+    <h2 class="text-3xl sm:text-4xl font-semibold tracking-[-0.02em] max-w-xl mt-3">
+      Skilled hands on your floor, on a contract, with one invoice
+    </h2>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-10 mt-12">
+      <div>
+        <p class="text-[15px] font-medium">Graded skills</p>
+        <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+          Proficiency stated L1 to L4 per skill, so you know what you are getting before they arrive.
+        </p>
+      </div>
+      <div>
+        <p class="text-[15px] font-medium">Milestone escrow</p>
+        <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+          30% arrival, 40% mid-project, 30% completion. You release each one.
+        </p>
+      </div>
+      <div>
+        <p class="text-[15px] font-medium">Replacement cover</p>
+        <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+          Not suitable in the first 48 hours? We replace them, at our cost.
+        </p>
+      </div>
+      <div>
+        <p class="text-[15px] font-medium">GST invoicing</p>
+        <p class="text-[15px] text-slate-500 mt-1.5 leading-relaxed">
+          Compliant invoices, TDS handled, one vendor instead of many.
+        </p>
+      </div>
+    </div>
+
+    <a href="/client-dashboard.html"
+       class="inline-block mt-12 bg-slate-900 text-white text-[15px] font-medium px-6 py-3.5 rounded-full hover:bg-slate-800 transition">
+      Post a requirement
+    </a>
+  </div>
+</section>
+
+<footer>
+  <div class="rule"></div>
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 py-10 flex flex-col sm:flex-row gap-4 items-center justify-between">
+    <p class="text-[14px] text-slate-400">&copy; 2026 RoboCADer Pro</p>
+    <div class="flex gap-7 text-[14px] text-slate-500">
+      <a href="/technician-onboard.html" class="hover:text-slate-900 transition">Professional login</a>
+      <a href="/client-dashboard.html" class="hover:text-slate-900 transition">Plant login</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  /**
+   * The sixteen competencies, straight from the generated taxonomy.
+   *
+   * If skill-tags.js fails to load the list stays empty rather than falling
+   * back to a hardcoded copy — a stale duplicate here would advertise skills
+   * the form cannot accept, which is worse than showing nothing.
+   */
+  (function () {
+    var list = document.getElementById("skillList");
+    var competencies = window.ROBOCADER_COMPETENCIES || [];
+    if (!list || !competencies.length) return;
+
+    var esc = function (t) { return String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); };
+
+    list.innerHTML = competencies.map(function (c) {
+      return '<a href="/technician-onboard.html" class="group flex items-baseline gap-3 py-4 border-b border-slate-100">' +
+               '<span class="text-[13px] text-slate-300 num w-5 shrink-0 pt-0.5">' +
+                 String(c.order).padStart(2, "0") +
+               '</span>' +
+               '<span class="min-w-0">' +
+                 '<span class="block text-[15px] text-slate-800 group-hover:text-slate-950 transition">' +
+                   esc(c.label) +
+                 '</span>' +
+                 (c.description
+                   ? '<span class="block text-[13px] text-slate-400 leading-relaxed mt-1">' +
+                       esc(c.description) + '</span>'
+                   : "") +
+               '</span>' +
+             '</a>';
+    }).join("");
+  })();
+</script>
+</body>
+</html>

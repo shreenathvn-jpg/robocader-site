@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F8FAFC">
+<title>RoboCADer Pro — Plant Dashboard</title>
+
+<!--
+  RoboCADer Pro — Client (plant head) dashboard
+
+  SIMPLIFIED TO ONE THING AT A TIME. The earlier version showed the post form,
+  the project list, candidates and escrow all at once. Now:
+      LIST VIEW    projects only, scannable
+      DETAIL VIEW  one project — candidates and escrow, reached by clicking in
+      MODAL        posting a requirement, opened deliberately
+  Nothing competes for attention and the default view answers one question:
+  what is the state of my projects.
+
+  TWO DATABASE CONSTRAINTS ARE VISIBLE IN THIS UI:
+
+  1. Candidates come from the `technician_directory` VIEW, never `profiles`.
+     The view omits phone_number. A plant head who can read a technician's
+     number hires them directly next time and RoboCADer never sees the second
+     project — the masking is commercial as much as privacy.
+
+  2. There is NO "release escrow" button. Clients approve submitted work and
+     may raise a dispute; moving money is admin/service-role only (migration
+     002, guard_milestone_authority). Offering a button that always fails with
+     a permissions error would be worse than not offering one.
+-->
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+  .num { font-variant-numeric: tabular-nums; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid #2563EB; outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<script src="/js/config.js"></script>
+<script src="/js/monitoring.js"></script>
+<!-- ?v= is a cache buster. The taxonomy just changed shape, and a browser
+     holding the previous skill-tags.js would find no competencies and render
+     an empty skill list. Bump this whenever the taxonomy changes. -->
+<script src="/js/skill-tags.js?v=4"></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+
+<!-- ===================== sign in ===================== -->
+<section id="authPanel" class="min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="bg-blue-600 p-2.5 rounded-xl"><i class="fas fa-industry text-white text-xl"></i></div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-800">Plant Dashboard</h1>
+        <p class="text-xs text-slate-500">Industrial talent platform</p>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <button type="button" data-oauth="google"
+              class="w-full flex items-center justify-center gap-2.5 border-2 border-slate-200 rounded-xl py-2.5
+                     font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition">
+        <i class="fab fa-google text-[#EA4335]"></i> Continue with Google
+      </button>
+      <button type="button" data-oauth="linkedin_oidc"
+              class="w-full flex items-center justify-center gap-2.5 border-2 border-slate-200 rounded-xl py-2.5
+                     font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition">
+        <i class="fab fa-linkedin text-[#0A66C2]"></i> Continue with LinkedIn
+      </button>
+
+      <div class="flex items-center gap-3 py-1">
+        <div class="flex-1 h-px bg-slate-200"></div>
+        <span class="text-xs text-slate-400">or</span>
+        <div class="flex-1 h-px bg-slate-200"></div>
+      </div>
+
+      <div>
+        <label for="emailInput" class="text-sm font-medium text-slate-700">Work email</label>
+        <input id="emailInput" type="email" autocomplete="email" placeholder="you@plant.com"
+               class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+      </div>
+
+      <div>
+        <div class="flex items-baseline justify-between">
+          <label for="passwordInput" class="text-sm font-medium text-slate-700">Password</label>
+          <button type="button" id="forgotBtn" class="text-xs text-blue-600 hover:text-blue-800">Forgot password?</button>
+        </div>
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="At least 8 characters"
+               class="w-full mt-1.5 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+      </div>
+
+      <button id="submitAuthBtn"
+              class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+        Sign in
+      </button>
+
+      <p class="text-center text-sm text-slate-500">
+        <span id="toggleAuthPrompt">Don't have an account?</span>
+        <button type="button" id="toggleAuthBtn" class="text-blue-600 font-medium hover:text-blue-800">Sign up</button>
+      </p>
+
+      <div id="authMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<!--
+  FIRST-RUN SETUP. Signing in creates an auth user but NOT a profiles row, and
+  projects_insert_own_client requires role_type = 'client'. Without this panel a
+  new client signs in successfully and is then refused by RLS on every action —
+  which is exactly the "You do not have permission to do that" dead end.
+-->
+<section id="setupPanel" class="hidden min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="bg-blue-600 p-2.5 rounded-xl"><i class="fas fa-building text-white text-xl"></i></div>
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">Complete your account</h2>
+        <p class="text-xs text-slate-500">One time, so we can attach projects to you</p>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div>
+        <input id="setupName" type="text" placeholder="Your full name *"
+               class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="setupName"></p>
+      </div>
+
+      <div>
+        <label class="text-sm font-medium text-slate-700">Contact number *</label>
+        <div class="flex gap-2 mt-1.5">
+          <span class="flex items-center px-3 bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-600 num font-medium">+91</span>
+          <input id="setupPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="98765 43210"
+                 class="flex-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num">
+        </div>
+        <p class="text-xs text-slate-400 mt-1.5">Used by our coordinator only. Never shown to technicians.</p>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="setupPhone"></p>
+      </div>
+
+      <div>
+        <select id="setupCity"
+                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none appearance-none bg-white">
+          <option value="">Your plant city (optional)</option>
+        </select>
+      </div>
+
+      <div id="setupMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
+
+      <button id="setupSaveBtn"
+              class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+        <i class="fas fa-check-circle"></i> Continue to dashboard
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== dashboard ===================== -->
+<div id="dashboard" class="hidden">
+
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
+      <div class="bg-blue-600 p-2 rounded-xl"><i class="fas fa-industry text-white"></i></div>
+      <div class="min-w-0">
+        <p class="font-bold text-slate-800 leading-tight">Plant Dashboard</p>
+        <p class="text-xs text-slate-500 leading-tight">RoboCADer Pro</p>
+      </div>
+
+      <div id="reliabilityBadge" class="hidden ml-auto flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 rounded-xl">
+        <i class="fas fa-shield-halved text-slate-400"></i>
+        <div class="text-right leading-tight">
+          <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Reliability</p>
+          <p class="text-sm font-bold text-slate-800 num">
+            <span id="reliabilityScore">—</span>
+            <span id="reliabilityGrade" class="font-normal text-slate-500 text-xs"></span>
+          </p>
+        </div>
+      </div>
+
+      <button id="signOutBtn" class="text-sm text-slate-500 hover:text-slate-800 shrink-0">Sign out</button>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+
+    <!-- ---------- company & billing identity ----------
+         Every client invoice is issued to THIS. issue_client_invoice() refuses
+         without it, so the card stays open and amber until it is complete;
+         afterwards it collapses to one line with an Edit link. -->
+    <section id="billingCard" class="hidden mb-6 bg-white rounded-2xl border-2 p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-800"><i class="fas fa-file-invoice text-slate-400 mr-1.5"></i>Company &amp; billing details</h2>
+          <p id="billingSummary" class="text-sm text-slate-500 mt-0.5">Needed before we can invoice you. Takes a minute.</p>
+        </div>
+        <button id="billingEditBtn" class="hidden text-sm text-blue-600 hover:text-blue-800 shrink-0">Edit</button>
+      </div>
+
+      <div id="billingForm" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="sm:col-span-2">
+          <label class="text-sm font-medium text-slate-700">Legal name of the company *</label>
+          <input id="billLegalName" type="text" placeholder="As on your GST certificate"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div class="sm:col-span-2">
+          <label class="text-sm font-medium text-slate-700">Registered address *</label>
+          <input id="billAddress" type="text" placeholder="Building, street, city, PIN"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">GSTIN <span class="text-slate-400 font-normal">(leave blank if unregistered)</span></label>
+          <input id="billGstin" type="text" maxlength="15" placeholder="29AAFCI9487D1Z2" autocapitalize="characters"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num uppercase">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">State *</label>
+          <select id="billState"
+                  class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none appearance-none bg-white">
+            <option value="">Choose state</option>
+          </select>
+          <p class="text-xs text-slate-400 mt-1">Decides whether your invoice carries CGST+SGST or IGST.</p>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="text-sm font-medium text-slate-700">Accounts email <span class="text-slate-400 font-normal">(invoices go here)</span></label>
+          <input id="billEmail" type="email" placeholder="accounts@yourcompany.com"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div id="billingMessage" class="hidden sm:col-span-2 text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="billingSaveBtn"
+                  class="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-slate-700 transition disabled:opacity-50">
+            <i class="fas fa-check"></i> Save billing details
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- list view ---------- -->
+    <section id="listView">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h2 class="text-xl font-bold text-slate-800">Your projects</h2>
+          <p class="text-sm text-slate-500">Post a requirement and we match verified technicians</p>
+        </div>
+        <button id="newProjectBtn"
+                class="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-semibold hover:bg-blue-700 transition shrink-0">
+          <i class="fas fa-plus"></i> <span class="hidden sm:inline">New requirement</span>
+        </button>
+      </div>
+      <div id="projectList" class="space-y-3">
+        <div class="bg-white rounded-2xl shadow-sm p-8 text-center text-slate-400 text-sm">
+          <i class="fas fa-spinner fa-spin"></i> Loading…
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- detail view ---------- -->
+    <section id="detailView" class="hidden">
+      <button id="backBtn" class="text-sm text-slate-500 hover:text-slate-800 mb-4">
+        <i class="fas fa-arrow-left"></i> All projects
+      </button>
+      <div id="detailBody" class="space-y-4"></div>
+    </section>
+  </main>
+</div>
+
+<!-- ===================== post requirement modal ===================== -->
+<div id="formModal" class="hidden fixed inset-0 z-30 bg-slate-900/40 p-4 overflow-y-auto">
+  <div class="max-w-md w-full mx-auto my-4 bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="bg-blue-600 p-2.5 rounded-xl"><i class="fas fa-clipboard-list text-white text-xl"></i></div>
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">New requirement</h2>
+        <p class="text-xs text-slate-500">We alert matching technicians on WhatsApp</p>
+      </div>
+      <button id="closeFormBtn" class="ml-auto text-slate-400 hover:text-slate-700 px-2"><i class="fas fa-xmark text-lg"></i></button>
+    </div>
+
+    <form id="projectForm" class="space-y-3" novalidate>
+      <div>
+        <input id="titleInput" type="text" placeholder="Project title *  e.g. Line 3 PLC retrofit"
+               class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="titleInput"></p>
+      </div>
+
+      <textarea id="descInput" rows="2" placeholder="Scope (optional)"
+                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none resize-y"></textarea>
+
+      <div>
+        <label class="text-sm font-medium text-slate-700">Skills required *</label>
+        <div class="relative mt-1.5">
+          <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
+          <input id="skillFilter" type="search" placeholder="Search skills…"
+                 class="w-full pl-10 pr-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div id="skillPicker" class="flex flex-wrap gap-2 mt-2 max-h-52 overflow-y-auto p-1"></div>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="skills"></p>
+      </div>
+
+      <!--
+        ROLE AND HEADCOUNT.
+
+        "3 machine assembly technicians" used to be unsayable: the form took a
+        flat skill list, so five skills and five people were the same thing.
+        A role with a headcount is what the matching engine and the assignment
+        model both need.
+      -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="col-span-2">
+          <label class="text-sm font-medium text-slate-700">Role *</label>
+          <input id="roleInput" placeholder="e.g. Siemens PLC Engineer"
+                 class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+          <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="roleInput"></p>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">How many? *</label>
+          <input id="headcountInput" type="number" min="1" max="200" value="1"
+                 class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-sm font-medium text-slate-700">Start date *</label>
+          <input id="startInput" type="date"
+                 class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
+          <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="startInput"></p>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">End date *</label>
+          <input id="endInput" type="date"
+                 class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
+          <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="endInput"></p>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-sm font-medium text-slate-700">Your day rate per person (₹) *</label>
+        <input id="dayRateInput" type="number" min="0" placeholder="5000"
+               class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
+        <p class="text-xs text-slate-400 mt-1">What you pay per person per day. We handle the professional's rate, contract and compliance.</p>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="dayRateInput"></p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <select id="citySelect"
+                  class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none appearance-none bg-white">
+            <option value="">Plant city *</option>
+          </select>
+          <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="citySelect"></p>
+        </div>
+      </div>
+
+      <!-- DERIVED, not typed. Days come from the dates; budget from days ×
+           rate × headcount. Asking for them again invited numbers that did
+           not reconcile with each other (QA H3). -->
+      <div id="derivedBox" class="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500">Duration</span>
+          <span id="derivedDays" class="font-semibold text-slate-800 num">—</span>
+        </div>
+        <div class="flex items-center justify-between mt-1">
+          <span class="text-slate-500">Estimated total</span>
+          <span id="derivedBudget" class="font-semibold text-slate-800 num">—</span>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">
+          <i class="fas fa-circle-info"></i> Days × rate × people. Escrow splits 30% arrival · 40% mid-project · 30% completion
+        </p>
+        <input id="daysInput" type="hidden"><input id="budgetInput" type="hidden">
+      </div>
+
+      <label class="flex items-start gap-2.5 p-3 bg-slate-50 rounded-xl cursor-pointer">
+        <input id="dryRunInput" type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-600 shrink-0">
+        <span class="text-sm text-slate-600">Preview matches only — do not send WhatsApp alerts yet</span>
+      </label>
+
+      <div id="formMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
+
+      <button id="postBtn" type="submit"
+              class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+        <i class="fas fa-bolt"></i> Post and find technicians
+      </button>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+// A scroll over a focused number field must not change its value (6000 → 5999).
+document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
+import { auth, profiles, projects, requirements, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=7";
+
+const cfg = window.ROBOCADER_CONFIG ?? {};
+RoboMonitor.init({
+  dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT,
+  release: cfg.RELEASE, surface: "client-dashboard"
+});
+
+const $ = (id) => document.getElementById(id);
+const selectedSkills = new Set();
+const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const CITIES = ["Hosur","Chennai","Sriperumbudur","Oragadam","Coimbatore","Bengaluru","Pune","Chakan",
+  "Ahmedabad","Sanand","Vadodara","Rajkot","Gurugram","Manesar","Bhiwadi","Neemrana","Noida",
+  "Jamshedpur","Nashik","Aurangabad","Hyderabad","Sri City","Pithampur"];
+
+$("citySelect").innerHTML = `<option value="">Plant city *</option>` +
+  CITIES.map((c) => `<option value="${c}">${c}</option>`).join("");
+
+const CHIP_ON  = "px-3 py-1.5 rounded-full text-xs border-2 cursor-pointer transition select-none bg-blue-600 text-white border-blue-600";
+const CHIP_OFF = "px-3 py-1.5 rounded-full text-xs border-2 cursor-pointer transition select-none bg-white text-slate-700 border-slate-200 hover:border-slate-300";
+
+const BANNER = {
+  info:    "bg-slate-100 text-slate-700",
+  success: "bg-green-50 text-green-700 border border-green-200",
+  error:   "bg-red-50 text-red-700 border border-red-200"
+};
+
+function banner(node, text, kind = "info") {
+  node.className = `text-sm rounded-xl p-3 ${BANNER[kind]}`;
+  node.textContent = text;
+  node.classList.remove("hidden");
+}
+
+function setFieldError(field, message) {
+  const node = document.querySelector(`[data-error-for="${field}"]`);
+  if (!node) return;
+  node.textContent = message ?? "";
+  node.classList.toggle("hidden", !message);
+}
+
+// ---------------------------------------------------------------------------
+// Skill picker
+// ---------------------------------------------------------------------------
+
+/**
+ * Competencies first, brands underneath.
+ *
+ * A plant head knows they need "PLC Programming"; whether they also need
+ * Siemens specifically is a second, narrower question. Asking both at once as
+ * one flat list of thirty-eight chips buries the first question in the second —
+ * and a requirement tagged only `Siemens_PLC` matches nobody who wrote
+ * `PLC_Programming`, so the flat list quietly costs you candidates.
+ */
+function renderSkillPicker(filter = "") {
+  const needle = filter.trim().toLowerCase();
+  const hit = (label) => !needle || label.toLowerCase().includes(needle);
+
+  const chip = (tag, label, small) =>
+    `<span data-skill="${tag}" role="button" tabindex="0" aria-pressed="${selectedSkills.has(tag)}"
+       class="${selectedSkills.has(tag) ? CHIP_ON : CHIP_OFF}${small ? " text-xs px-3 py-1" : ""}">${esc(label)}</span>`;
+
+  const groups = (window.ROBOCADER_COMPETENCIES ?? []).map((c) => {
+    const parentMatches = hit(c.label);
+    const details = c.details.filter((d) => parentMatches || hit(d.label));
+    if (!parentMatches && !details.length) return "";
+
+    // Brands appear once the competency is picked, or when searched for by name.
+    const showDetails = details.length && (selectedSkills.has(c.tag) || !parentMatches);
+
+    return `
+      <div class="w-full">
+        ${parentMatches ? chip(c.tag, c.label, false) : ""}
+        ${showDetails
+          ? `<div class="flex flex-wrap gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-slate-100">
+               ${details.map((d) => chip(d.tag, d.label, true)).join("")}
+             </div>`
+          : ""}
+      </div>`;
+  }).join("");
+
+  const others = (window.ROBOCADER_UNPARENTED_SKILLS ?? [])
+    .filter((s) => hit(s.label))
+    .map((s) => chip(s.tag, s.label, false)).join("");
+
+  $("skillPicker").innerHTML = groups + (others
+    ? `<div class="w-full pt-1">
+         <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Other</p>
+         <div class="flex flex-wrap gap-2">${others}</div>
+       </div>`
+    : "");
+}
+
+$("skillPicker").addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-skill]");
+  if (!chip) return;
+  const tag = chip.dataset.skill;
+  selectedSkills.has(tag) ? selectedSkills.delete(tag) : selectedSkills.add(tag);
+  renderSkillPicker($("skillFilter").value);
+});
+$("skillFilter").addEventListener("input", (e) => renderSkillPicker(e.target.value));
+
+// ---------------------------------------------------------------------------
+// Modal
+// ---------------------------------------------------------------------------
+
+function openModal() {
+  $("formModal").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  renderSkillPicker();
+  $("titleInput").focus();
+}
+
+function closeModal() {
+  $("formModal").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+$("newProjectBtn").addEventListener("click", openModal);
+$("closeFormBtn").addEventListener("click", closeModal);
+$("formModal").addEventListener("click", (e) => { if (e.target === $("formModal")) closeModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("formModal").classList.contains("hidden")) closeModal();
+});
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+let authMode = "signin";
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === "signup";
+  $("submitAuthBtn").textContent = signup ? "Create account" : "Sign in";
+  $("toggleAuthPrompt").textContent = signup ? "Already have an account?" : "Don't have an account?";
+  $("toggleAuthBtn").textContent = signup ? "Sign in" : "Sign up";
+  $("passwordInput").autocomplete = signup ? "new-password" : "current-password";
+  $("forgotBtn").classList.toggle("hidden", signup);
+  $("authMessage").classList.add("hidden");
+}
+
+$("toggleAuthBtn").addEventListener("click", () => setAuthMode(authMode === "signin" ? "signup" : "signin"));
+
+// Only providers actually configured in Supabase get a button (none today).
+const OAUTH_PROVIDERS = Array.isArray(window.ROBOCADER_CONFIG?.OAUTH_PROVIDERS) ? window.ROBOCADER_CONFIG.OAUTH_PROVIDERS : [];
+document.querySelectorAll("[data-oauth]").forEach((b) => { if (!OAUTH_PROVIDERS.includes(b.dataset.oauth)) b.remove(); });
+document.querySelectorAll("[data-oauth]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await auth.signInWithProvider(button.dataset.oauth, window.location.href);
+    } catch (error) {
+      button.disabled = false;
+      banner($("authMessage"),
+        error instanceof ApiError ? error.message : "Could not start sign-in.", "error");
+    }
+  });
+});
+
+$("submitAuthBtn").addEventListener("click", async () => {
+  const email = $("emailInput").value.trim();
+  const password = $("passwordInput").value;
+
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    banner($("authMessage"), "Enter a valid work email address.", "error"); return;
+  }
+  if (password.length < 8) {
+    banner($("authMessage"), "Password must be at least 8 characters.", "error"); return;
+  }
+
+  const button = $("submitAuthBtn");
+  const original = button.textContent;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Please wait…';
+
+  try {
+    if (authMode === "signup") {
+      const { needsConfirmation } = await auth.signUpWithPassword(email, password, window.location.href);
+      if (needsConfirmation) {
+        banner($("authMessage"),
+          `Account created. Check ${email} for a confirmation link, then sign in.`, "success");
+        setAuthMode("signin");
+        return;
+      }
+    } else {
+      await auth.signInWithPassword(email, password);
+    }
+    const user = await auth.currentUser();
+    await enterDashboard(user);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "emailAuth", mode: authMode });
+    banner($("authMessage"), error instanceof ApiError ? error.message : "Could not sign in.", "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
+
+$("forgotBtn").addEventListener("click", async () => {
+  const email = $("emailInput").value.trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    banner($("authMessage"), "Enter your email address first, then tap Forgot password.", "error");
+    return;
+  }
+  try {
+    await auth.sendPasswordReset(email, window.location.href);
+    banner($("authMessage"), `Reset link sent to ${email}.`, "success");
+  } catch (error) {
+    banner($("authMessage"), error instanceof ApiError ? error.message : "Could not send the reset link.", "error");
+  }
+});
+
+$("signOutBtn").addEventListener("click", async () => { await auth.signOut(); location.reload(); });
+
+// ---------------------------------------------------------------------------
+// Post a requirement
+// ---------------------------------------------------------------------------
+
+/** Days from the dates (inclusive); budget = days × day rate × headcount. */
+function deriveTotals() {
+  const s0 = $("startInput").value, e0 = $("endInput").value;
+  const rate = Number($("dayRateInput").value) || 0;
+  const heads = Number($("headcountInput").value) || 1;
+  let days = 0;
+  if (s0 && e0 && e0 >= s0) days = Math.round((new Date(e0) - new Date(s0)) / 86400000) + 1;
+  const budget = days * rate * heads;
+  $("daysInput").value = days || "";
+  $("budgetInput").value = budget || "";
+  $("derivedDays").textContent = days ? `${days} day${days === 1 ? "" : "s"}` : "—";
+  $("derivedBudget").textContent = budget ? `${inr.format(budget)} for ${heads} ${heads === 1 ? "person" : "people"}` : "—";
+}
+["startInput","endInput","dayRateInput","headcountInput"].forEach((id) => $(id).addEventListener("input", deriveTotals));
+
+$("projectForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  deriveTotals();
+
+  const errors = {};
+  if (!$("titleInput").value.trim()) errors.titleInput = "Give the project a title.";
+  if (!$("citySelect").value) errors.citySelect = "Select the plant city.";
+  // Days and budget are derived from dates × rate × headcount (see deriveTotals).
+  if (selectedSkills.size === 0) errors.skills = "Select at least one required skill.";
+
+  if (!$("roleInput").value.trim()) errors.roleInput = "Name the role you need.";
+
+  const s0 = $("startInput").value, e0 = $("endInput").value;
+  if (!s0) errors.startInput = "When does it start?";
+  if (!e0) errors.endInput = "When does it end?";
+  // The assignment model keys everything off these dates — an end before a
+  // start would be rejected by the database with a constraint name, which
+  // tells a plant head nothing.
+  if (s0 && e0 && e0 < s0) errors.endInput = "The end date is before the start date.";
+
+  const rate = Number($("dayRateInput").value);
+  if (!rate || rate <= 0) errors.dayRateInput = "What will you pay per person, per day?";
+
+  ["titleInput", "citySelect", "daysInput", "budgetInput", "skills"]
+    .forEach((f) => setFieldError(f, errors[f]));
+
+  if (Object.keys(errors).length) {
+    RoboMonitor.trackFormError("post-project", errors);
+    banner($("formMessage"), "Please complete the highlighted fields.", "error");
+    return;
+  }
+
+  const button = $("postBtn");
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting…';
+
+  try {
+    const startsOn = $("startInput").value;
+    const endsOn    = $("endInput").value;
+    const headcount = Number($("headcountInput").value) || 1;
+    const dayRate   = Number($("dayRateInput").value);
+
+    const project = await projects.create({
+      title: $("titleInput").value.trim(),
+      description: $("descInput").value.trim() || null,
+      required_skills: [...selectedSkills],
+      location_city: $("citySelect").value,
+      duration_days: Number($("daysInput").value),
+      total_budget: Number($("budgetInput").value)
+    });
+
+    // The ROLE is what gets staffed. A project without a requirement cannot be
+    // accepted by anyone, so the two are created together — a project posted
+    // without one would sit in the list looking live and be unfillable.
+    //
+    // No payout rate is sent. The column grant would reject it, which is the
+    // guarantee: a client cannot set, or discover, what we pay.
+    await requirements.create({
+      projectId: project.id,
+      roleTitle: $("roleInput").value.trim(),
+      headcount,
+      requiredSkills: [...selectedSkills],
+      minSkillLevel: "L2",
+      locationCity: $("citySelect").value,
+      startsOn,
+      endsOn,
+      clientDayRate: dayRate,
+      notes: $("descInput").value.trim() || null,
+    });
+
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Finding technicians…';
+
+    // Preview scores without writing anything. Committing mints ledger rows and
+    // is what eventually costs Meta message fees, so it is opt-in.
+    const previewOnly = $("dryRunInput").checked;
+    const candidates = await matches.preview(project.id);
+    const found = candidates.length;
+    let sent = 0;
+
+    if (!previewOnly && found) {
+      const { written } = await projects.runMatching(project.id);
+      sent = written;
+    }
+
+    closeModal();
+    $("projectForm").reset();
+    $("headcountInput").value = "1";
+    deriveTotals();
+    selectedSkills.clear();
+    $("formMessage").classList.add("hidden");
+
+    await loadProjects();
+    await openDetail(project.id);
+
+    if (found === 0) {
+      banner($("formMessage"),
+        "Posted. Nobody matches yet — the professional pool is still being built.", "info");
+    }
+    RoboMonitor.addBreadcrumb("project", "Posted", { found, sent, dry_run: dryRun });
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "postProject" });
+    // Say what actually broke. This message read "Could not post the project"
+    // for three separate failures today, and in every one of them the project
+    // had already been created — the failure was downstream. A generic message
+    // sends someone to retry the one step that worked.
+    banner($("formMessage"),
+      error instanceof ApiError
+        ? error.message
+        : `Posted, but the next step failed: ${error?.message ?? "unknown error"}. Reload the page — your project is saved.`,
+      "error");
+  } finally {
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-bolt"></i> Post and find technicians';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Presentation helpers
+// ---------------------------------------------------------------------------
+
+const STAGE_LABEL = { arrival_30: "Arrival", mid_project_40: "Mid-project", completion_30: "Completion" };
+const STAGE_PCT   = { arrival_30: "30%", mid_project_40: "40%", completion_30: "30%" };
+
+const STATUS_PILL = {
+  open:        "bg-blue-50 text-blue-700",
+  matched:     "bg-amber-50 text-amber-700",
+  in_progress: "bg-indigo-50 text-indigo-700",
+  completed:   "bg-green-50 text-green-700"
+};
+
+const ESCROW_PILL = {
+  locked:   { label: "Locked",   cls: "bg-slate-100 text-slate-600",  icon: "fa-lock" },
+  released: { label: "Released", cls: "bg-green-50 text-green-700",   icon: "fa-circle-check" },
+  disputed: { label: "Disputed", cls: "bg-red-50 text-red-700",       icon: "fa-triangle-exclamation" }
+};
+
+const WORK_TEXT = {
+  not_started: { label: "Not started", cls: "text-slate-400" },
+  in_progress: { label: "In progress", cls: "text-blue-600" },
+  submitted:   { label: "Submitted",   cls: "text-amber-600" },
+  approved:    { label: "Approved",    cls: "text-green-600" }
+};
+
+function verificationBadge(status) {
+  if (status === "verified") {
+    return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700">
+      <i class="fas fa-circle-check"></i> Verified</span>`;
+  }
+  if (status === "rejected") {
+    return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-700">Rejected</span>`;
+  }
+  return `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700">
+    <i class="fas fa-clock"></i> Pending</span>`;
+}
+
+// value is POINTS (skill out of 50, location out of 30, reliability out of
+// 20 — the weights in rank_candidates). Show each as a percentage of its own
+// maximum, so three bars read on the same scale.
+function scoreBar(label, value, max) {
+  const pct = Math.max(0, Math.min(100, Math.round(((Number(value) || 0) / max) * 100)));
+  return `
+    <div>
+      <div class="flex justify-between text-[11px] text-slate-500 mb-1">
+        <span>${label}</span><span class="num font-semibold text-slate-700">${pct}%</span>
+      </div>
+      <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div class="h-full bg-blue-600 rounded-full" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+}
+
+/**
+ * A scored candidate who has NOT been contacted.
+ *
+ * Deliberately says so, and shows the missing skills rather than hiding them.
+ * A shortlist that only ever shows perfect matches teaches a plant head that
+ * the pool is empty, when the truth is usually "close, but one skill short" —
+ * which is a conversation, not a dead end.
+ */
+function previewCard(c) {
+  const where = c.distance_km == null || Number(c.distance_km) === 0
+    ? esc(c.location_city ?? "—")
+    : `${esc(c.location_city ?? "—")} · ${Math.round(c.distance_km)} km away`;
+
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+      <div class="flex items-start gap-3 mb-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+          <i class="fas fa-id-card text-slate-400"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-slate-800 truncate num" title="Passport ID — the professional's identity is held by RoboCADer">${esc(c.full_name)}</p>
+          <p class="text-xs text-slate-500">${where}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-2xl font-bold text-blue-600 num leading-none">${Math.round(c.match_score)}</p>
+          <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mt-0.5">match</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-1.5 mb-3">
+        ${verificationBadge(c.verified_status)}
+        <span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600 num">
+          <i class="fas fa-star text-amber-400"></i> ${Number(c.reliability_score).toFixed(1)}</span>
+        ${c.rate_band ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600">${esc(c.rate_band)}</span>` : ""}
+        ${c.meets_min_level
+          ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-green-50 text-green-700">Meets required level</span>`
+          : `<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">Below required level</span>`}
+      </div>
+
+      <div class="flex flex-wrap gap-1 mb-3">
+        ${(c.matched_skills ?? []).map((t) =>
+          `<span class="px-2 py-0.5 rounded-md bg-blue-50 text-[11px] text-blue-700">${esc(t.replace(/_/g, " "))}</span>`).join("")}
+        ${(c.missing_skills ?? []).map((t) =>
+          `<span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-400 line-through">${esc(t.replace(/_/g, " "))}</span>`).join("")}
+      </div>
+
+      <div class="flex gap-3 text-[11px] text-slate-400 num border-t border-slate-100 pt-2">
+        <span>Skill ${Math.round(c.skill_score)}/50</span>
+        <span>Location ${Math.round(c.location_score)}/30</span>
+        <span>Reliability ${Math.round(c.reliability_points)}/20</span>
+      </div>
+    </div>`;
+}
+
+function candidateCard(match) {
+  const t = match.technician;
+  if (!t) return `<div class="p-4 bg-slate-50 rounded-xl text-sm text-slate-400">Technician record unavailable.</div>`;
+
+  const b = match.score_breakdown ?? {};
+  const where = b.distance_km == null
+    ? esc(t.location_city ?? "—")
+    : `${esc(t.location_city ?? "—")} · ${b.distance_km} km away`;
+
+  const RESPONSE = {
+    accepted: "bg-green-50 text-green-700", declined: "bg-red-50 text-red-700",
+    expired: "bg-slate-100 text-slate-500", sent: "bg-blue-50 text-blue-700"
+  }[match.response] ?? "bg-slate-100 text-slate-500";
+
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+      <div class="flex items-start gap-3 mb-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+          <i class="fas fa-id-card text-slate-400"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-slate-800 truncate num" title="Passport ID — the professional's identity is held by RoboCADer">${esc(t.full_name)}</p>
+          <p class="text-xs text-slate-500">${where}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-2xl font-bold text-blue-600 num leading-none">${match.match_score}</p>
+          <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mt-0.5">match</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-1.5 mb-3">
+        ${verificationBadge(t.verified_status)}
+        <span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600 num">
+          <i class="fas fa-star text-amber-400"></i> ${Number(t.reliability_score).toFixed(1)}</span>
+        ${t.rate_band ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600">${esc(t.rate_band)}</span>` : ""}
+        <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${RESPONSE}">${esc(match.response)}</span>
+      </div>
+
+      <div class="flex flex-wrap gap-1 mb-3">
+        ${(t.skills_array ?? []).slice(0, 6).map((s) =>
+          `<span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-600">${esc(s.replace(/_/g, " "))}</span>`).join("")}
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mb-3">
+        ${scoreBar("Skill", b.skill, 50)}${scoreBar("Proximity", b.location ?? b.proximity, 30)}${scoreBar("Reliability", b.reliability, 20)}
+      </div>
+
+      <div class="flex gap-3 pt-3 border-t border-slate-100 text-xs">
+        <button data-work="${esc(t.technician_id)}" class="text-blue-600 hover:text-blue-800 font-medium">
+          <i class="fas fa-briefcase"></i> Work record</button>
+        ${t.certificate_url
+          ? `<button data-cert="${esc(t.certificate_url)}" class="text-blue-600 hover:text-blue-800 font-medium">
+               <i class="fas fa-file-lines"></i> Certificate</button>`
+          : `<span class="text-slate-300"><i class="fas fa-file-lines"></i> No certificate</span>`}
+        ${t.video_passport_url
+          ? `<button data-cert="${esc(t.video_passport_url)}" class="text-blue-600 hover:text-blue-800 font-medium">
+               <i class="fas fa-video"></i> Video passport</button>` : ""}
+      </div>
+      <div data-work-panel="${esc(t.technician_id)}" class="hidden mt-3 pt-3 border-t border-slate-100"></div>
+    </div>`;
+}
+
+function milestoneRow(m) {
+  const escrow = ESCROW_PILL[m.escrow_status] ?? ESCROW_PILL.locked;
+  const work = WORK_TEXT[m.work_status] ?? WORK_TEXT.not_started;
+
+  return `
+    <div class="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-slate-100">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-slate-800">
+          ${STAGE_LABEL[m.milestone_stage] ?? m.milestone_stage}
+          <span class="text-slate-400 font-normal num">${STAGE_PCT[m.milestone_stage] ?? ""}</span>
+        </p>
+        <p class="text-xs ${work.cls}">${work.label}</p>
+      </div>
+      <p class="text-sm font-semibold text-slate-800 num shrink-0">${inr.format(m.amount)}</p>
+      <span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 ${escrow.cls}">
+        <i class="fas ${escrow.icon}"></i> ${escrow.label}</span>
+      ${m.work_status === "submitted"
+        ? `<button data-approve="${m.id}" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 shrink-0">Approve</button>` : ""}
+      ${m.escrow_status === "locked"
+        ? `<button data-dispute="${m.id}" class="px-2 py-1.5 rounded-lg text-slate-400 hover:text-red-600 text-xs shrink-0" title="Raise a dispute"><i class="fas fa-flag"></i></button>` : ""}
+    </div>`;
+}
+
+function projectCard(p) {
+  const pill = STATUS_PILL[p.status] ?? "bg-slate-100 text-slate-600";
+  return `
+    <button data-open="${p.id}"
+      class="w-full text-left bg-white rounded-2xl shadow-sm hover:shadow-md border border-slate-100 p-5 transition">
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <h3 class="font-bold text-slate-800 truncate">${esc(p.title)}</h3>
+        <span class="px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 ${pill}">${esc(p.status.replace(/_/g, " "))}</span>
+      </div>
+      <p class="text-sm text-slate-500 num mb-3">
+        <i class="fas fa-location-dot text-slate-300"></i> ${esc(p.location_city ?? "—")}
+        · ${p.duration_days} days · ${inr.format(p.total_budget)}
+      </p>
+      <div class="flex flex-wrap gap-1">
+        ${(p.required_skills ?? []).slice(0, 5).map((s) =>
+          `<span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-600">${esc(s.replace(/_/g, " "))}</span>`).join("")}
+      </div>
+    </button>`;
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+async function loadProjects() {
+  const list = $("projectList");
+  try {
+    const rows = await projects.mine();
+
+    if (!rows.length) {
+      list.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-sm p-10 text-center">
+          <i class="fas fa-clipboard-list text-3xl text-slate-200"></i>
+          <p class="text-slate-500 mt-3 text-sm">No projects yet.</p>
+          <p class="text-slate-400 text-xs mt-1">Post your first requirement to see matched technicians.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = rows.map(projectCard).join("");
+    await refreshReliability(rows);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "loadProjects" });
+    list.innerHTML = `<div class="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-4">
+      ${esc(error instanceof ApiError ? error.message : "Could not load projects.")}</div>`;
+  }
+}
+
+async function openDetail(projectId) {
+  $("listView").classList.add("hidden");
+  $("detailView").classList.remove("hidden");
+  window.scrollTo(0, 0);
+
+  const body = $("detailBody");
+  body.innerHTML = `<div class="bg-white rounded-2xl shadow-sm p-8 text-center text-slate-400 text-sm">
+    <i class="fas fa-spinner fa-spin"></i> Loading…</div>`;
+
+  try {
+    // preview is scored live and writes nothing; matched is the committed
+    // ledger. Both are fetched because they answer different questions:
+    // "who exists" and "who have we actually approached".
+    const [all, matched, escrow, preview] = await Promise.all([
+      projects.mine(),
+      matches.forProject(projectId),
+      milestones.forProject(projectId),
+      matches.preview(projectId).catch(() => []),
+    ]);
+
+    const p = all.find((row) => row.id === projectId);
+    const total = escrow.reduce((sum, m) => sum + Number(m.amount), 0);
+    const released = escrow.filter((m) => m.escrow_status === "released")
+      .reduce((sum, m) => sum + Number(m.amount), 0);
+    const pct = total ? Math.round((released / total) * 100) : 0;
+
+    body.dataset.projectId = projectId;
+    body.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-sm p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h2 class="text-xl font-bold text-slate-800">${esc(p?.title ?? "Project")}</h2>
+            <p class="text-sm text-slate-500 num mt-0.5">
+              <i class="fas fa-location-dot text-slate-300"></i> ${esc(p?.location_city ?? "—")}
+              · ${p?.duration_days ?? "—"} days · ${p ? inr.format(p.total_budget) : "—"}
+            </p>
+          </div>
+          <button data-rematch="${projectId}"
+                  class="bg-blue-600 text-white px-3.5 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 transition shrink-0">
+            <i class="fas fa-paper-plane"></i> Shortlist &amp; alert
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-bold text-slate-800 mb-3">
+          Matched Skill Passports <span class="text-slate-400 font-normal num">(${matched.length})</span>
+        </h3>
+        ${matched.length
+          ? `<div class="grid gap-3 md:grid-cols-2">${matched.map(candidateCard).join("")}</div>`
+          : preview.length
+            ? `<p class="text-xs text-slate-500 mb-3">
+                 ${preview.length} ${preview.length === 1 ? "professional matches" : "professionals match"} this requirement.
+                 Nobody has been contacted yet.
+               </p>
+               <div class="grid gap-3 md:grid-cols-2">${preview.map(previewCard).join("")}</div>`
+            : `<div class="bg-white rounded-2xl shadow-sm p-8 text-center">
+                 <i class="fas fa-user-slash text-2xl text-slate-200"></i>
+                 <p class="text-sm text-slate-500 mt-2">Nobody in the pool matches these skills yet.</p>
+                 <p class="text-xs text-slate-400 mt-1">We are still building the professional pool in your area.</p>
+               </div>`}
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-800">Escrow ladder</h3>
+          <span class="text-xs text-slate-500 num">${inr.format(released)} of ${inr.format(total)} released</span>
+        </div>
+        <div class="h-2 bg-slate-100 rounded-full overflow-hidden mb-3">
+          <div class="h-full bg-green-500 rounded-full transition-all" style="width:${pct}%"></div>
+        </div>
+        ${escrow.length
+          ? `<div class="space-y-2">${escrow.map(milestoneRow).join("")}</div>`
+          : `<div class="bg-white rounded-2xl shadow-sm p-6 text-center text-sm text-slate-400">
+               The ladder is created when a technician is confirmed onto the project.</div>`}
+        <p class="text-xs text-slate-400 mt-3">
+          <i class="fas fa-shield-halved"></i>
+          You approve completed work; RoboCADer releases the funds. This protects both sides.
+        </p>
+      </div>`;
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "openDetail", project_id: projectId });
+    body.innerHTML = `<div class="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-4">
+      ${esc(error instanceof ApiError ? error.message : "Could not load this project.")}</div>`;
+  }
+}
+
+function showList() {
+  $("detailView").classList.add("hidden");
+  $("listView").classList.remove("hidden");
+  window.scrollTo(0, 0);
+}
+
+$("backBtn").addEventListener("click", showList);
+
+async function refreshReliability(projectRows) {
+  try {
+    const all = (await Promise.all(projectRows.map((p) => milestones.forProject(p.id)))).flat();
+    const index = clientReliabilityIndex(all);
+
+    $("reliabilityBadge").classList.remove("hidden");
+    $("reliabilityScore").textContent = index.score === null ? "—" : index.score;
+    $("reliabilityGrade").textContent = index.grade;
+    $("reliabilityBadge").title =
+      `${index.released} released, ${index.approved ?? 0} approved, ${index.disputed} disputed ` +
+      `of ${index.total} milestones. Indicative only — computed from your own visible history.`;
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "refreshReliability" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delegated actions
+// ---------------------------------------------------------------------------
+
+document.addEventListener("click", async (event) => {
+  const open = event.target.closest("[data-open]");
+  if (open) return openDetail(open.dataset.open);
+
+  const rematch = event.target.closest("[data-rematch]");
+  if (rematch) {
+    rematch.disabled = true;
+    rematch.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching…';
+    try {
+      const { written } = await projects.runMatching(rematch.dataset.rematch, {});
+      await openDetail(rematch.dataset.rematch);
+      // Say what happened. Silence after a click reads as "it did nothing".
+      const again = document.querySelector(`[data-rematch="${rematch.dataset.rematch}"]`);
+      const note = document.createElement("p");
+      note.className = "text-xs mt-2 " + (written ? "text-green-700" : "text-amber-700");
+      note.textContent = written
+        ? `${written} professional${written === 1 ? "" : "s"} shortlisted and alerted.`
+        : "Nobody in the pool matches yet. New passports arrive daily — we will alert you when someone fits.";
+      again?.insertAdjacentElement("afterend", note);
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "rematch" });
+      rematch.disabled = false;
+      rematch.innerHTML = '<i class="fas fa-paper-plane"></i> Shortlist &amp; alert';
+    }
+    return;
+  }
+
+  const approve = event.target.closest("[data-approve]");
+  if (approve) {
+    approve.disabled = true;
+    approve.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    try {
+      await milestones.approve(approve.dataset.approve);
+      await openDetail($("detailBody").dataset.projectId);
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "approveMilestone" });
+      approve.disabled = false;
+      approve.textContent = "Approve";
+    }
+    return;
+  }
+
+  const dispute = event.target.closest("[data-dispute]");
+  if (dispute) {
+    const reason = prompt("What is the problem? This is recorded and reviewed by RoboCADer.");
+    if (!reason?.trim()) return;
+    try {
+      await milestones.raiseDispute(dispute.dataset.dispute, reason);
+      await openDetail($("detailBody").dataset.projectId);
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "raiseDispute" });
+    }
+    return;
+  }
+
+  // Work record — loaded on demand, not with every candidate card. A shortlist
+  // of ten would otherwise fire ten extra queries nobody asked for.
+  const work = event.target.closest("[data-work]");
+  if (work) {
+    const id = work.dataset.work;
+    const panel = document.querySelector(`[data-work-panel="${id}"]`);
+    if (!panel) return;
+
+    if (!panel.classList.contains("hidden")) { panel.classList.add("hidden"); return; }
+
+    panel.classList.remove("hidden");
+    panel.innerHTML = `<p class="text-xs text-slate-400"><i class="fas fa-spinner fa-spin"></i> Loading…</p>`;
+
+    try {
+      const [entries, summary] = await Promise.all([
+        workHistory.forTechnician(id),
+        workHistory.summary(id)
+      ]);
+
+      if (!entries.length) {
+        panel.innerHTML = `<p class="text-xs text-slate-400">No prior work recorded yet.</p>`;
+        return;
+      }
+
+      const years = summary.total_months >= 12
+        ? `${Math.floor(summary.total_months / 12)}y ${summary.total_months % 12}m`
+        : `${summary.total_months}m`;
+
+      const VP = {
+        verified:      "bg-green-50 text-green-700",
+        pending:       "bg-amber-50 text-amber-700",
+        disputed:      "bg-red-50 text-red-700",
+        self_declared: "bg-slate-100 text-slate-500"
+      };
+
+      panel.innerHTML = `
+        <div class="flex items-center gap-3 mb-2 text-[11px] text-slate-500">
+          <span class="num font-semibold text-slate-700">${years}</span> recorded
+          <span>&middot;</span>
+          <span class="num font-semibold text-slate-700">${summary.plant_count}</span>
+          plant${summary.plant_count === 1 ? "" : "s"}
+        </div>
+        <div class="space-y-2">
+          ${entries.map((w) => `
+            <div class="text-xs">
+              <div class="flex items-baseline gap-2">
+                <span class="font-semibold text-slate-800">${esc(w.role_title)}</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${VP[w.verified_status] ?? VP.self_declared}">
+                  ${esc((w.verified_status || "").replace("_", "-"))}
+                </span>
+              </div>
+              <p class="text-slate-500">
+                ${esc(w.plant_name)}${w.location_city ? " · " + esc(w.location_city) : ""}
+                <span class="text-slate-400 num">· ${esc(formatSpan(w.started_on, w.ended_on, w.is_current))}</span>
+              </p>
+              ${w.summary ? `<p class="text-slate-600 mt-0.5">${esc(w.summary)}</p>` : ""}
+            </div>`).join("")}
+        </div>`;
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "loadWorkRecord" });
+      panel.innerHTML = `<p class="text-xs text-red-600">Could not load work record.</p>`;
+    }
+    return;
+  }
+
+  // Private bucket — mint a short-lived signed URL on demand.
+  const cert = event.target.closest("[data-cert]");
+  if (cert) {
+    cert.disabled = true;
+    try {
+      const url = await passports.signedUrl(cert.dataset.cert, 300);
+      window.open(url, "_blank", "noopener");
+    } catch (error) {
+      RoboMonitor.captureException(error, { operation: "viewCertificate" });
+    } finally {
+      cert.disabled = false;
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+
+$("setupCity").innerHTML = `<option value="">Your plant city (optional)</option>` +
+  CITIES.map((c) => `<option value="${c}">${c}</option>`).join("");
+
+$("setupSaveBtn").addEventListener("click", async () => {
+  const name = $("setupName").value.trim();
+  const digits = $("setupPhone").value.replace(/\D/g, "");
+
+  const errors = {};
+  if (name.length < 2) errors.setupName = "Enter your full name.";
+  if (digits.length !== 10 || !/^[6-9]/.test(digits)) errors.setupPhone = "Enter a valid 10-digit number.";
+  ["setupName", "setupPhone"].forEach((f) => setFieldError(f, errors[f]));
+  if (Object.keys(errors).length) return;
+
+  const button = $("setupSaveBtn");
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+  try {
+    // role_type 'client' is what projects_insert_own_client checks for.
+    await profiles.createOrUpdate({
+      fullName: name,
+      phone: `+91${digits}`,
+      role: "client",
+      city: $("setupCity").value || null
+    });
+    $("setupPanel").classList.add("hidden");
+    await showDashboard();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "clientSetup" });
+    banner($("setupMessage"),
+      error instanceof ApiError ? error.message : "Could not save. Please try again.", "error");
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-check-circle"></i> Continue to dashboard';
+  }
+});
+
+
+/* ---------------- company & billing identity ---------------- */
+(function initBillingStates() {
+  const sel = $("billState");
+  for (const [code, name] of Object.entries(GST_STATES)) {
+    const o = document.createElement("option");
+    o.value = code; o.textContent = `${name} (${code})`;
+    sel.appendChild(o);
+  }
+})();
+
+// Typing a GSTIN picks the state for you — the first two digits ARE the state.
+$("billGstin").addEventListener("input", () => {
+  const v = $("billGstin").value.toUpperCase();
+  $("billGstin").value = v;
+  const code = v.slice(0, 2);
+  if (v.length >= 2 && GST_STATES[code]) $("billState").value = code;
+});
+
+function paintBilling(b) {
+  const card = $("billingCard");
+  card.classList.remove("hidden");
+  if (b) {
+    card.classList.remove("border-amber-300");
+    card.classList.add("border-slate-100");
+    $("billingSummary").textContent =
+      `${b.legal_name} · ${b.state_name}${b.gstin ? " · GSTIN " + b.gstin : " · unregistered"}`;
+    $("billingForm").classList.add("hidden");
+    $("billingEditBtn").classList.remove("hidden");
+    $("billLegalName").value = b.legal_name;
+    $("billAddress").value = b.billing_address;
+    $("billGstin").value = b.gstin ?? "";
+    $("billState").value = b.state_code;
+    $("billEmail").value = b.contact_email ?? "";
+  } else {
+    card.classList.add("border-amber-300");
+    card.classList.remove("border-slate-100");
+    $("billingSummary").textContent = "Needed before we can invoice you. Takes a minute.";
+    $("billingForm").classList.remove("hidden");
+    $("billingEditBtn").classList.add("hidden");
+  }
+}
+
+$("billingEditBtn").addEventListener("click", () => {
+  $("billingForm").classList.remove("hidden");
+  $("billingEditBtn").classList.add("hidden");
+  $("billLegalName").focus();
+});
+
+$("billingSaveBtn").addEventListener("click", async () => {
+  const legalName = $("billLegalName").value.trim();
+  const address   = $("billAddress").value.trim();
+  const stateCode = $("billState").value;
+  if (legalName.length < 2) { banner($("billingMessage"), "Enter the company's legal name.", "error"); return; }
+  if (address.length < 6)   { banner($("billingMessage"), "Enter the registered address.", "error"); return; }
+  if (!stateCode)           { banner($("billingMessage"), "Choose the state.", "error"); return; }
+
+  const button = $("billingSaveBtn");
+  button.disabled = true;
+  try {
+    const saved = await billing.save({
+      legalName, address, stateCode,
+      gstin: $("billGstin").value.trim() || null,
+      contactEmail: $("billEmail").value.trim() || null,
+    });
+    $("billingMessage").classList.add("hidden");
+    paintBilling(saved);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "billing.save" });
+    banner($("billingMessage"),
+      error instanceof ApiError ? error.message : "Could not save. Please try again.", "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+async function loadBilling() {
+  try { paintBilling(await billing.mine()); }
+  catch (error) { RoboMonitor.captureException(error, { operation: "billing.mine" }); }
+}
+
+async function showDashboard() {
+  $("dashboard").classList.remove("hidden");
+  renderSkillPicker();
+  await Promise.all([loadBilling(), loadProjects()]);
+}
+
+async function enterDashboard(user) {
+  RoboMonitor.setUser({ id: user.id, role: "client" });
+  $("authPanel").classList.add("hidden");
+
+  // A signed-in user with no profiles row cannot pass any RLS check. Send them
+  // through setup rather than into a dashboard where every action fails.
+  let profile = null;
+  try {
+    profile = await profiles.me();
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "loadClientProfile" });
+  }
+
+  if (!profile) {
+    $("setupPanel").classList.remove("hidden");
+    $("setupName").focus();
+    return;
+  }
+
+  if (profile.role_type === "technician") {
+    $("setupPanel").classList.add("hidden");
+    $("dashboard").classList.add("hidden");
+    $("authPanel").classList.remove("hidden");
+    banner($("authMessage"),
+      "This account is registered as a technician. Open the technician page instead.", "error");
+    return;
+  }
+
+  await showDashboard();
+}
+
+auth.onChange(async (session) => { if (session?.user) await enterDashboard(session.user); });
+
+(async function boot() {
+  try {
+    const user = await auth.currentUser();
+    if (user) await enterDashboard(user);
+  } catch (error) {
+    RoboMonitor.captureException(error, { operation: "boot" });
+  }
+})();
+</script>
+</body>
+</html>
