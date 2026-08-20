@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document — RoboCADer Pro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/js/config.js"></script>
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    body { background: white !important; }
+    #sheet { box-shadow: none !important; border: none !important; margin: 0 !important; }
+  }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8">
+
+<div class="max-w-3xl mx-auto">
+  <div class="no-print flex items-center justify-between mb-4">
+    <a href="javascript:history.back()" class="text-sm text-slate-500 hover:text-slate-800">← Back</a>
+    <button onclick="window.print()"
+            class="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700">
+      <i class="fas fa-download"></i> Download / Print (PDF)
+    </button>
+  </div>
+
+  <div id="sheet" class="bg-white border border-slate-200 shadow-sm rounded-lg p-8 text-[13px] leading-relaxed text-slate-800">
+    <p id="loading" class="text-slate-400 text-sm">Loading document…</p>
+  </div>
+</div>
+
+<script type="module">
+import { supabase } from "/js/api.js?v=22";
+
+const params = new URLSearchParams(location.search);
+const sheet = document.getElementById("sheet");
+const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const inr = (n) => "₹" + Number(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+
+// Indian-system amount in words (rupees only, sufficient for a tax document).
+function words(n) {
+  n = Math.round(Number(n));
+  if (!n) return "Zero";
+  const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  const two = (x) => x < 20 ? ones[x] : `${tens[Math.floor(x / 10)]}${x % 10 ? " " + ones[x % 10] : ""}`;
+  const three = (x) => `${x >= 100 ? ones[Math.floor(x / 100)] + " Hundred " : ""}${x % 100 ? two(x % 100) : ""}`.trim();
+  const parts = [];
+  const crore = Math.floor(n / 1e7); n %= 1e7;
+  const lakh  = Math.floor(n / 1e5); n %= 1e5;
+  const thou  = Math.floor(n / 1e3); n %= 1e3;
+  if (crore) parts.push(three(crore) + " Crore");
+  if (lakh)  parts.push(three(lakh) + " Lakh");
+  if (thou)  parts.push(three(thou) + " Thousand");
+  if (n)     parts.push(three(n));
+  return parts.join(" ");
+}
+
+(async () => {
+  const id = params.get("id");
+  if (!id) { sheet.innerHTML = `<p class="text-red-600 text-sm">No document id.</p>`; return; }
+
+  const { data: inv, error } = await supabase.from("invoices").select("*").eq("id", id).maybeSingle();
+  if (error || !inv) {
+    sheet.innerHTML = `<p class="text-red-600 text-sm">Document not found, or you do not have access to it. Sign in with the account it belongs to.</p>`;
+    return;
+  }
+
+  let ts = null;
+  if (inv.timesheet_id) {
+    const { data } = await supabase.from("timesheets")
+      .select("days_worked, extra_hours, period_start, period_end").eq("id", inv.timesheet_id).maybeSingle();
+    ts = data;
+  }
+
+  const advice = inv.kind === "technician_payment_advice";
+  const intra = Number(inv.igst) === 0;
+  document.title = `${inv.invoice_no} — RoboCADer Pro`;
+
+  const partyBlock = (label, name, address, gstin, state) => `
+    <div>
+      <p class="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">${label}</p>
+      <p class="font-semibold">${esc(name)}</p>
+      ${address ? `<p class="text-slate-600 whitespace-pre-line">${esc(address)}</p>` : ""}
+      ${gstin ? `<p class="text-slate-600">GSTIN: <span class="num">${esc(gstin)}</span></p>` : ""}
+      <p class="text-slate-600">State: ${esc(state)}</p>
+    </div>`;
+
+  sheet.innerHTML = `
+    <div class="flex items-start justify-between pb-4 border-b-2 border-slate-800">
+      <div>
+        <p class="text-xl font-bold">${esc(inv.seller_name)}</p>
+        ${inv.seller_address ? `<p class="text-slate-600 whitespace-pre-line">${esc(inv.seller_address)}</p>` : ""}
+        ${inv.seller_gstin ? `<p class="text-slate-600">GSTIN: <span class="num">${esc(inv.seller_gstin)}</span></p>` : ""}
+        <p class="text-slate-600">State: ${esc(inv.seller_state)}</p>
+      </div>
+      <div class="text-right">
+        <p class="text-lg font-bold uppercase tracking-wide">${advice ? "Payment Advice" : "Tax Invoice"}</p>
+        <p class="text-slate-600">${advice ? "" : "Original for Recipient"}</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-6 py-4 border-b border-slate-200">
+      ${partyBlock(advice ? "Payable to" : "Billed to", inv.buyer_name, inv.buyer_address, inv.buyer_gstin, inv.buyer_state)}
+      <div class="text-right">
+        <p><span class="text-slate-500">No:</span> <span class="font-semibold num">${esc(inv.invoice_no)}</span></p>
+        <p><span class="text-slate-500">Date:</span> <span class="num">${esc(inv.issue_date)}</span></p>
+        ${inv.due_date ? `<p><span class="text-slate-500">Due:</span> <span class="num">${esc(inv.due_date)}</span></p>` : ""}
+        <p><span class="text-slate-500">FY:</span> <span class="num">${esc(inv.fin_year)}</span></p>
+        ${advice ? "" : `<p><span class="text-slate-500">Place of supply:</span> ${esc(inv.place_of_supply)}</p>`}
+        <p><span class="text-slate-500">Status:</span> ${esc(inv.status)}</p>
+      </div>
+    </div>
+
+    <table class="w-full mt-4">
+      <thead>
+        <tr class="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-200">
+          <th class="py-2">Description</th>
+          <th class="py-2 text-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b border-slate-100">
+          <td class="py-3">
+            ${advice ? "Professional services rendered" : "Manpower &amp; technical services (SAC 998519)"}
+            ${ts ? `<span class="block text-slate-500">${Number(ts.days_worked)} day${Number(ts.days_worked) === 1 ? "" : "s"}${Number(ts.extra_hours) ? ` + ${Number(ts.extra_hours)} OT hour${Number(ts.extra_hours) === 1 ? "" : "s"}` : ""}${ts.period_start ? ` · ${ts.period_start} to ${ts.period_end}` : ""}</span>` : ""}
+          </td>
+          <td class="py-3 text-right num">${inr(inv.taxable_value)}</td>
+        </tr>
+        ${advice ? `
+        <tr class="border-b border-slate-100">
+          <td class="py-2 text-slate-600">TDS u/s ${esc(inv.tds_section)} @ ${Number(inv.tds_rate)}%</td>
+          <td class="py-2 text-right num text-slate-600">− ${inr(inv.tds_amount)}</td>
+        </tr>
+        <tr>
+          <td class="py-3 font-bold">Net payable</td>
+          <td class="py-3 text-right num font-bold text-base">${inr(inv.net_payable)}</td>
+        </tr>` : `
+        ${intra ? `
+        <tr class="border-b border-slate-100">
+          <td class="py-2 text-slate-600">CGST @ 9%</td>
+          <td class="py-2 text-right num text-slate-600">${inr(inv.cgst)}</td>
+        </tr>
+        <tr class="border-b border-slate-100">
+          <td class="py-2 text-slate-600">SGST @ 9%</td>
+          <td class="py-2 text-right num text-slate-600">${inr(inv.sgst)}</td>
+        </tr>` : `
+        <tr class="border-b border-slate-100">
+          <td class="py-2 text-slate-600">IGST @ 18%</td>
+          <td class="py-2 text-right num text-slate-600">${inr(inv.igst)}</td>
+        </tr>`}
+        <tr>
+          <td class="py-3 font-bold">Total</td>
+          <td class="py-3 text-right num font-bold text-base">${inr(inv.total_amount)}</td>
+        </tr>`}
+      </tbody>
+    </table>
+
+    <p class="mt-2 text-slate-600 italic">
+      Rupees ${words(advice ? inv.net_payable : inv.total_amount)} Only
+    </p>
+
+    ${inv.notes ? `<p class="mt-4 text-slate-500">${esc(inv.notes)}</p>` : ""}
+
+    <div class="mt-10 pt-4 border-t border-slate-200 flex items-end justify-between">
+      <p class="text-[11px] text-slate-400">Computer-generated by RoboCADer Pro · robocader.com</p>
+      <div class="text-center">
+        <p class="text-slate-500 mb-8">For ${esc(inv.seller_name)}</p>
+        <p class="border-t border-slate-300 px-6 pt-1 text-[11px] text-slate-500">Authorised signatory</p>
+      </div>
+    </div>`;
+})();
+</script>
+</body>
+</html>

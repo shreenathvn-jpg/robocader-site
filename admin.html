@@ -663,6 +663,8 @@ function renderInvoices() {
           : `<p>Taxable ${inr.format(i.taxable_value)}</p>
              <p class="text-xs text-slate-500">${i.igst > 0 ? `IGST ${inr.format(i.igst)}` : `CGST ${inr.format(i.cgst)} + SGST ${inr.format(i.sgst)}`} → <span class="font-semibold">${inr.format(i.total_amount)}</span></p>`}
       </div>
+      <a href="/document.html?id=${i.id}" target="_blank" title="Open the printable document (Download / Print as PDF)"
+         class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700"><i class="fas fa-file-lines"></i> Open</a>
       ${i.status === "draft" ? `<button data-issue="${i.id}" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">Mark issued</button>` : ""}
     </div>`;
   }).join("");

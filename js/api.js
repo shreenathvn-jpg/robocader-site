@@ -288,6 +288,22 @@ export const skillTest = {
 };
 
 // ---------------------------------------------------------------------------
+// Documents (009): each party reads their own invoices / payment advices via
+// RLS; the printable page is /document.html?id=...
+// ---------------------------------------------------------------------------
+export const documents = {
+  async mine() {
+    const { data, error } = await supabase
+      .from("invoices")
+      .select("id, invoice_no, kind, status, issue_date, taxable_value, total_amount, net_payable")
+      .neq("status", "cancelled")
+      .order("issue_date", { ascending: false });
+    if (error) fail(error, "documents.mine");
+    return data ?? [];
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Admin view-as (031) — read-only. Active only when the signed-in user is an
 // administrator and the page URL carries ?as=<profile-id>. Readers below serve
 // data from the bundle; every writer refuses. The database refuses too (RLS
