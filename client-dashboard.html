@@ -153,6 +153,13 @@
 
       <div id="setupMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
 
+      <label class="flex items-start gap-2 mb-4 text-xs text-slate-600 cursor-pointer">
+        <input id="termsCheck" type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-600 shrink-0">
+        <span>I have read and accept the
+          <a href="/terms-client.html" target="_blank" class="text-blue-600 font-semibold hover:underline">RoboCADer Service Terms</a>
+          — including that professionals introduced here are engaged only through RoboCADer, never directly.
+          <strong>Registration is not complete without this.</strong></span>
+      </label>
       <button id="setupSaveBtn"
               class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
         <i class="fas fa-check-circle"></i> Continue to dashboard
@@ -414,7 +421,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=26";
+import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=27";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1433,12 +1440,21 @@ $("setupSaveBtn").addEventListener("click", async () => {
 
   try {
     // role_type 'client' is what projects_insert_own_client checks for.
+    if (!$("termsCheck").checked) {
+      $("setupError")?.classList?.remove("hidden");
+      const errEl = $("setupError");
+      if (errEl) errEl.textContent = "Please read and accept the Service Terms - registration is not complete without them.";
+      button.disabled = false;
+      button.innerHTML = '<i class="fas fa-check-circle"></i> Continue to dashboard';
+      return;
+    }
     await profiles.createOrUpdate({
       fullName: name,
       phone: `+91${digits}`,
       role: "client",
       city: $("setupCity").value || null
     });
+    await terms.accept().catch(() => {});
     $("setupPanel").classList.add("hidden");
     await showDashboard();
   } catch (error) {
@@ -1590,6 +1606,26 @@ async function enterDashboard(user) {
     banner($("authMessage"),
       "This account is registered as a technician. Open the technician page instead.", "error");
     return;
+  }
+
+  // Existing plants who have not accepted the current terms: one banner;
+  // posting refuses server-side until they do (044 guard).
+  if (profile.role_type === "client" && !viewAs.active()) {
+    terms.accepted().then((ok) => {
+      if (ok) return;
+      const bar = document.createElement("div");
+      bar.className = "bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-2xl p-4 mb-4 flex flex-wrap items-center gap-3";
+      bar.innerHTML = `<span class="flex-1 min-w-[16rem]">Please accept the
+          <a href="/terms-client.html" target="_blank" class="font-semibold underline">RoboCADer Service Terms</a>
+          to keep posting requirements.</span>
+        <button id="acceptTermsBtn" class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-700">I accept the terms</button>`;
+      const anchorEl = document.getElementById("invoicesCard") ?? document.querySelector("section");
+      anchorEl?.parentElement?.insertBefore(bar, anchorEl);
+      document.getElementById("acceptTermsBtn")?.addEventListener("click", async (ev) => {
+        ev.target.disabled = true;
+        try { await terms.accept(); bar.remove(); } catch { ev.target.disabled = false; }
+      });
+    }).catch(() => {});
   }
 
   await showDashboard();

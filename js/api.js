@@ -295,6 +295,29 @@ export const skillTest = {
 };
 
 // ---------------------------------------------------------------------------
+// Client service terms (044): insert-only acceptance ledger.
+// ---------------------------------------------------------------------------
+export const terms = {
+  CURRENT: "v1",
+  async accepted() {
+    const user = await auth.currentUser();
+    if (!user) return false;
+    const { data, error } = await supabase
+      .from("terms_acceptances").select("terms_version").eq("terms_version", this.CURRENT).maybeSingle();
+    if (error) return false;
+    return Boolean(data);
+  },
+  async accept() {
+    const user = await auth.currentUser();
+    if (!user) throw new ApiError("You are not signed in.", { operation: "terms.accept" });
+    const { error } = await supabase
+      .from("terms_acceptances")
+      .insert({ client_id: user.id, terms_version: this.CURRENT });
+    if (error && !String(error.message).includes("duplicate")) fail(error, "terms.accept");
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Documents (009): each party reads their own invoices / payment advices via
 // RLS; the printable page is /document.html?id=...
 // ---------------------------------------------------------------------------
