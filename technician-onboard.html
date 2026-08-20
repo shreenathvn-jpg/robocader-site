@@ -522,7 +522,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=18";
+import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=19";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -545,6 +545,7 @@ const state = {
   profileExists: false,
   rate: 3500,
   primary: null,
+  skillYears: {},
   certificateUploaded: false,
   // Set only by a real verifyOtp round trip. Never inferred from the form.
   phoneVerified: false,
@@ -660,6 +661,10 @@ function renderSkills() {
                 class="w-9 h-8 rounded-lg text-xs font-semibold border-2 transition
                        ${level === l ? LEVEL_ON : LEVEL_OFF}">${l}</button>`).join("")}
           </div>
+          <span class="text-[11px] text-slate-500 ml-2 shrink-0">Yrs on it</span>
+          <input type="number" min="0" max="60" step="0.5" data-years-tag="${tag}"
+                 value="${state.skillYears[tag] ?? ""}" placeholder="0"
+                 class="w-14 px-2 py-1.5 border-2 border-slate-200 rounded-lg text-xs num focus:border-blue-500 focus:outline-none">
         </div>
         ${details}
       </div>`);
@@ -751,6 +756,12 @@ function toggleDetail(tag, parentTag) {
 }
 
 $("skillMatrix").addEventListener("change", (event) => {
+  const yrs = event.target.closest("[data-years-tag]");
+  if (yrs) {
+    state.skillYears[yrs.dataset.yearsTag] = yrs.value === "" ? null : Number(yrs.value);
+    saveDraft();
+    return;
+  }
   const select = event.target.closest("[data-slot]");
   if (!select) return;
   const slot = select.dataset.slot;
@@ -1088,7 +1099,7 @@ $("submitAuthBtn").addEventListener("click", async () => {
         return;
       }
 
-      const { needsConfirmation } = await auth.signUpWithPassword(email, password, window.location.href);
+      const { needsConfirmation } = await auth.signUpWithPassword(email, password, window.location.href, "technician");
       if (needsConfirmation) {
         // A dedicated state, not the login form again. The person has done
         // their part; the next move is in their inbox.
@@ -1181,11 +1192,20 @@ async function enterFormMode() {
     // plant account.
     if (profile?.role_type === "admin")  { location.replace("/admin.html"); return; }
     if (profile?.role_type === "client") { location.replace("/client-dashboard.html"); return; }
+    if (!profile) {
+      const meta = (await auth.currentUser())?.user_metadata;
+      if (meta?.intended_role === "client") { location.replace("/client-dashboard.html"); return; }
+    }
 
     state.profileExists = Boolean(profile);
     $("backToDash").classList.toggle("hidden", !profile);
     // An existing professional is updating, not onboarding - say so.
     if (profile) $("saveBtn").innerHTML = '<i class="fas fa-rotate"></i> Update my profile';
+    // Re-hydrate what QA found missing on edit (F2): the ★ identity, and the
+    // phone (so the WhatsApp field doesn't reappear empty and save null).
+    if (passport?.primary_skill_tag) state.primary = passport.primary_skill_tag;
+    if (profile?.phone_number && !state.phone) state.phone = profile.phone_number;
+    $("whatsappWrap").classList.toggle("hidden", Boolean(state.phone));
     if (profile) {
       $("nameInput").value = profile.full_name ?? $("nameInput").value;
       if (profile.location_city && CITIES.includes(profile.location_city)) {
@@ -1207,7 +1227,10 @@ async function enterFormMode() {
       (passport.skills_array ?? []).forEach((tag) => { if (!state.skills.has(tag)) state.skills.set(tag, null); });
       // Overlay the levels they actually declared.
       try {
-        (await skillsApi.mine()).forEach((r) => state.skills.set(r.skill_tag, r.self_level));
+        (await skillsApi.mine()).forEach((r) => {
+        state.skills.set(r.skill_tag, r.self_level);
+        if (r.years_on_skill != null) state.skillYears[r.skill_tag] = Number(r.years_on_skill);
+      });
       } catch (error) {
         RoboMonitor.captureException(error, { operation: "loadSkillLevels" });
       }
@@ -1548,7 +1571,7 @@ $("saveBtn").addEventListener("click", async () => {
     await skillsApi.replaceMine(
       [...state.skills.entries()]
         .filter(([, level]) => level)
-        .map(([tag, level]) => ({ tag, level })),
+        .map(([tag, level]) => ({ tag, level, years: state.skillYears[tag] ?? null })),
     );
 
     // The identity: the L4 skill if one exists, else the starred choice,

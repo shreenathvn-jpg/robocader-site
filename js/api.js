@@ -140,11 +140,17 @@ export const auth = {
    * and the user must click the link before they are signed in. The caller
    * needs to distinguish those two cases, so both are returned.
    */
-  async signUpWithPassword(email, password, redirectTo) {
+  async signUpWithPassword(email, password, redirectTo, intendedRole = null) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: redirectTo ?? window.location.href },
+      options: {
+        emailRedirectTo: redirectTo ?? window.location.href,
+        // Bound at signup so a confirmed-but-profileless session can be routed
+        // to the RIGHT onboarding instead of whichever dashboard it lands on
+        // (QA F14: a technician on the plant page would have become a plant).
+        data: intendedRole ? { intended_role: intendedRole } : undefined,
+      },
     });
     if (error) fail(error, "auth.signUpWithPassword");
     return { user: data.user, session: data.session, needsConfirmation: !data.session };
@@ -506,6 +512,7 @@ export const skills = {
         technician_id: user.id,
         skill_tag: e.tag,
         self_level: e.level,
+        years_on_skill: e.years ?? null,
       })),
       { onConflict: "technician_id,skill_tag" },
     );

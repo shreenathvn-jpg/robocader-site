@@ -117,7 +117,7 @@
           Matching projects <span id="projCount" class="num text-slate-400"></span>
         </button>
         <button data-tab="roles" class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">
-          Offers <span id="roleCount" class="num text-slate-400"></span>
+          Open roles <span id="roleCount" class="num text-slate-400"></span>
         </button>
         <button data-tab="qa" class="tab px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap">
           Q&amp;A <span id="qaCount" class="num text-slate-400"></span>
@@ -154,13 +154,14 @@
 </div>
 
 <script type="module">
-import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=18";
+import { workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=19";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "technician-dashboard" });
 
 const $ = (id) => document.getElementById(id);
+let workCount = 0;
 function showViewAsBanner(profile) {
   const bar = document.createElement("div");
   bar.className = "fixed top-0 inset-x-0 z-50 bg-amber-500 text-white text-center text-sm font-semibold py-1.5";
@@ -213,7 +214,7 @@ function completeness() {
     { done: mySkills.length >= 2,          weight: 10 },
     { done: Boolean(passport?.years_experience), weight: 5 },
     { done: Boolean(passport?.certificate_url),  weight: 15 },
-    { done: (passport?.work_entries ?? 0) > 0,   weight: 15 },
+    { done: workCount > 0,   weight: 15 },
     { done: answers.size >= 3,             weight: 10 },
   ];
   const total = items.reduce((n, i) => n + i.weight, 0);
@@ -289,7 +290,7 @@ function renderProfile() {
 
   // Only things that genuinely raise your chances, in the order they matter.
   const todo = [];
-  if (!(passport?.work_entries > 0)) todo.push(["Add a previous job", "Plants read this first", "/technician-onboard.html"]);
+  if (!(workCount > 0)) todo.push(["Add a previous job", "Plants read this first", "/technician-onboard.html"]);
   if (!passport?.certificate_url)    todo.push(["Upload your certificate", "ITI, diploma or training card", "/technician-onboard.html"]);
   if (mySkills.length < 2)           todo.push(["Add a second skill", "More projects will reach you", "/technician-onboard.html"]);
   if (answers.size < 3)              todo.push(["Answer 3 questions", "Takes two minutes", "#qa"]);
@@ -644,9 +645,11 @@ $("roleList").addEventListener("click", async (event) => {
       } catch { /* not an admin: fall through, the role guard routes them */ }
     }
 
-    const [profile, pass, sk, ans] = await Promise.all([
+    const [profile, pass, sk, ans, work] = await Promise.all([
       profiles.me(), passports.mine(), skillsApi.mine(), technician.answers(),
+      workHistory.mine().catch(() => []),
     ]);
+    workCount = (work ?? []).length;
     // This page is for professionals. A plant or an administrator who lands
     // here is sent to their own page rather than rendered as an empty
     // technician (a plant account was, until this check).
