@@ -522,7 +522,7 @@
 </div>
 
 <script type="module">
-import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=20";
+import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=21";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1204,7 +1204,7 @@ async function enterFormMode() {
     // Re-hydrate what QA found missing on edit (F2): the ★ identity, and the
     // phone (so the WhatsApp field doesn't reappear empty and save null).
     if (passport?.primary_skill_tag) state.primary = passport.primary_skill_tag;
-    if (profile?.phone_number && !state.phone) state.phone = profile.phone_number;
+    if (!state.phone) state.phone = (await profiles.myPhone()) || null;
     $("whatsappWrap").classList.toggle("hidden", Boolean(state.phone));
     // The first render ran BEFORE these async loads (QA F2: star, years and
     // the work list showed stale/empty and a save from that state lost data).

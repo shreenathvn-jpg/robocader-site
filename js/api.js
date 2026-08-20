@@ -30,7 +30,7 @@ export const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_K
 
 const PROFILE_COLUMNS =
   "id, full_name, role_type, location_city, location_lat, location_lng, " +
-  "daily_rate, availability_status, reliability_score, created_at, phone_number";
+  "daily_rate, availability_status, reliability_score, created_at";
 
 const PROJECT_COLUMNS =
   "id, client_id, title, description, required_skills, location_city, " +
@@ -183,6 +183,14 @@ export const auth = {
 // ---------------------------------------------------------------------------
 
 export const profiles = {
+  /** Own phone number via a definer RPC — the column has no direct select
+      grant (identity wall) and must never gain one. */
+  async myPhone() {
+    const { data, error } = await supabase.rpc("my_phone");
+    if (error) return null;
+    return data;
+  },
+
   async me() {
     if (VIEW_BUNDLE) return VIEW_BUNDLE.profile;
     const user = await auth.currentUser();
