@@ -1170,6 +1170,13 @@ async function enterFormMode() {
   try {
     const [profile, passport] = await Promise.all([profiles.me(), passports.mine()]);
 
+    // This form edits YOUR OWN passport. An admin has none (022: one account,
+    // one role) and verifies others through the console's Assess panel — send
+    // them back there instead of showing an unusable empty form. Same for a
+    // plant account.
+    if (profile?.role_type === "admin")  { location.replace("/admin.html"); return; }
+    if (profile?.role_type === "client") { location.replace("/client-dashboard.html"); return; }
+
     state.profileExists = Boolean(profile);
     if (profile) {
       $("nameInput").value = profile.full_name ?? $("nameInput").value;
