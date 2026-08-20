@@ -738,6 +738,25 @@ export const milestones = {
 // ---------------------------------------------------------------------------
 
 export const admin = {
+  /** The evidence pack for one profile (031 bundle): skills, work history, ratings, assignments. */
+  async evidence(profileId) {
+    const { data, error } = await supabase.rpc("admin_view_profile", { p_profile_id: profileId });
+    if (error) fail(error, "admin.evidence");
+    return data;
+  },
+
+  /** Set (or clear with null) the VERIFIED level of one skill. The 011 guard stamps assessed_by/at. */
+  async assessSkill({ technicianId, skillTag, level, notes = null }) {
+    const { data, error } = await supabase
+      .from("technician_skills")
+      .update({ assessed_level: level, assessor_notes: notes })
+      .eq("technician_id", technicianId)
+      .eq("skill_tag", skillTag)
+      .select("skill_tag, self_level, assessed_level");
+    if (error) fail(error, "admin.assessSkill");
+    return data?.[0] ?? null;
+  },
+
   /** The invisible pricing matrix (034). Admin-only: RLS yields zero rows to anyone else. */
   rateCard: {
     async list() {
