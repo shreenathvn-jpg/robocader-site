@@ -517,7 +517,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=12";
+import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=13";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -539,6 +539,7 @@ const state = {
   pendingWork: [],
   profileExists: false,
   rate: 3500,
+  primary: null,
   certificateUploaded: false,
   // Set only by a real verifyOtp round trip. Never inferred from the form.
   phoneVerified: false,
@@ -635,6 +636,9 @@ function renderSkills() {
                   class="flex-1 min-w-0 px-3 py-2 border-2 border-slate-200 rounded-lg bg-white text-sm focus:border-blue-500 focus:outline-none">
             ${options}
           </select>
+          <button type="button" data-primary="${tag}" aria-pressed="${state.primary === tag}"
+                  title="${state.primary === tag ? "Your main skill — plants see you as this first" : "Make this your main skill"}"
+                  class="px-1 shrink-0 ${state.primary === tag ? "text-amber-500" : "text-slate-200 hover:text-amber-400"}"><i class="fas fa-star"></i></button>
           <button type="button" data-remove="${tag}" title="Remove this skill"
                   class="text-slate-300 hover:text-red-500 px-1 shrink-0"><i class="fas fa-xmark"></i></button>
         </div>
@@ -676,6 +680,7 @@ function renderSkills() {
       </div>`);
   }
 
+  if (state.l4Note) rows.push(`<p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">${escapeHtml(state.l4Note)}</p>`);
   $("skillMatrix").innerHTML = rows.join("");
   $("skillCount").textContent = chosen.length;
 
@@ -714,6 +719,17 @@ function removeSkill(tag, { silent = false } = {}) {
 }
 
 function setLevel(tag, level) {
+  if (level === "L4") {
+    const otherL4 = chosenSkills().find((t) => t !== tag && state.skills.get(t) === "L4");
+    if (otherL4) {
+      // The database enforces this too; refusing here keeps it friendly.
+      state.l4Note = `Only one skill can be L4 — your main specialization. ${COMPETENCY_BY_TAG.get(otherL4)?.label ?? otherL4} is L4 now; set it lower first.`;
+      renderSkills();
+      return;
+    }
+    state.primary = tag;   // an L4 IS the identity
+  }
+  state.l4Note = null;
   state.skills.set(tag, level);
   for (const detail of DETAILS_OF.get(tag) ?? []) {
     if (state.skills.has(detail)) state.skills.set(detail, level);
@@ -744,7 +760,20 @@ $("skillMatrix").addEventListener("click", (event) => {
   if (remove) { removeSkill(remove.dataset.remove); return; }
 
   const detail = event.target.closest("[data-detail]");
-  if (detail) toggleDetail(detail.dataset.detail, detail.dataset.parent);
+  if (detail) { toggleDetail(detail.dataset.detail, detail.dataset.parent); return; }
+
+  const star = event.target.closest("[data-primary]");
+  if (star) {
+    const l4 = chosenSkills().find((t) => state.skills.get(t) === "L4");
+    if (l4 && l4 !== star.dataset.primary) {
+      state.l4Note = "Your L4 skill is your main skill — that is what L4 means.";
+    } else {
+      state.primary = star.dataset.primary;
+      state.l4Note = null;
+    }
+    renderSkills();
+    saveDraft();
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1507,8 +1536,14 @@ $("saveBtn").addEventListener("click", async () => {
         .map(([tag, level]) => ({ tag, level })),
     );
 
+    // The identity: the L4 skill if one exists, else the starred choice,
+    // else the first skill on the card.
+    const l4 = chosenSkills().find((t) => state.skills.get(t) === "L4");
+    const primary = l4
+      ?? (chosenSkills().includes(state.primary) ? state.primary : chosenSkills()[0] ?? null);
     await passports.save({
-      yearsExperience: $("experienceInput").value ? Number($("experienceInput").value) : null
+      yearsExperience: $("experienceInput").value ? Number($("experienceInput").value) : null,
+      primarySkillTag: primary,
     });
 
     localStorage.removeItem(DRAFT_KEY);

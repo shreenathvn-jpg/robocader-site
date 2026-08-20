@@ -154,7 +154,7 @@
 </div>
 
 <script type="module">
-import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=12";
+import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=13";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -239,6 +239,9 @@ function renderProfile() {
     <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${
       verified ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}">
       <i class="fas fa-${verified ? "circle-check" : "id-card"}"></i> ${verified ? "Verified" : "Registered"}</span>
+    ${passport?.primary_skill_tag ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700"
+      title="Your main skill — your professional identity. Plants see you as this first.">
+      <i class="fas fa-star"></i> ${esc(COMP.get(passport.primary_skill_tag)?.label ?? passport.primary_skill_tag.replace(/_/g, " "))}${(() => { const r = mySkills.find((x) => x.skill_tag === passport.primary_skill_tag); const lv = r?.assessed_level ?? r?.self_level; return lv ? " · " + lv : ""; })()}</span>` : ""}
     ${passport?.passport_no ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 num"
       title="Your Passport ID. Plants see this — never your name or number — until RoboCADer confirms you on a project.">
       <i class="fas fa-hashtag"></i> ${esc(passport.passport_no)}</span>` : ""}`;

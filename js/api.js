@@ -341,9 +341,12 @@ export const passports = {
    * technician_skills and lets the trigger rebuild the array. This function no
    * longer accepts skills at all, so the mistake cannot be made again here.
    */
-  async save({ yearsExperience }) {
+  async save({ yearsExperience, primarySkillTag }) {
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "passports.save" });
+
+    const fields = { years_experience: yearsExperience ?? null };
+    if (primarySkillTag !== undefined) fields.primary_skill_tag = primarySkillTag;
 
     // verified_status is deliberately not sent. The guard trigger in 001 would
     // reject it anyway — a technician cannot verify their own passport.
@@ -354,14 +357,14 @@ export const passports = {
     // onboarding). Update the one editable column; insert only if new.
     const { data: updated, error: updateError } = await supabase
       .from("skill_passports")
-      .update({ years_experience: yearsExperience ?? null })
+      .update(fields)
       .eq("technician_id", user.id)
       .select("technician_id");
     if (updateError) fail(updateError, "passports.save");
     if (!updated?.length) {
       const { error } = await supabase.from("skill_passports").insert({
         technician_id: user.id,
-        years_experience: yearsExperience ?? null,
+        ...fields,
       });
       if (error) fail(error, "passports.save");
     }
