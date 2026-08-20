@@ -240,6 +240,36 @@ export const profiles = {
 };
 
 // ---------------------------------------------------------------------------
+// Availability windows (029) — date ranges when the professional can take
+// work. No rows = available any time; the on/off toggle still rules.
+// ---------------------------------------------------------------------------
+export const availability = {
+  async list() {
+    const { data, error } = await supabase
+      .from("availability_windows")
+      .select("id, starts_on, ends_on")
+      .order("starts_on");
+    if (error) fail(error, "availability.list");
+    return data ?? [];
+  },
+
+  /** technician_id defaults to auth.uid() in the database. */
+  async add(startsOn, endsOn) {
+    const { error } = await supabase
+      .from("availability_windows")
+      .insert({ starts_on: startsOn, ends_on: endsOn });
+    if (error) fail(error, "availability.add");
+  },
+
+  async remove(id) {
+    const { error } = await supabase
+      .from("availability_windows")
+      .delete().eq("id", id);
+    if (error) fail(error, "availability.remove");
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Skill passports
 // ---------------------------------------------------------------------------
 
