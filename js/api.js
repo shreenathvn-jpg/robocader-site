@@ -298,21 +298,22 @@ export const skillTest = {
 // Client service terms (044): insert-only acceptance ledger.
 // ---------------------------------------------------------------------------
 export const terms = {
-  CURRENT: "v1",
-  async accepted() {
+  CLIENT: "v1",
+  TECH: "tech-v1",
+  async accepted(version = this.CLIENT) {
     const user = await auth.currentUser();
     if (!user) return false;
     const { data, error } = await supabase
-      .from("terms_acceptances").select("terms_version").eq("terms_version", this.CURRENT).maybeSingle();
+      .from("terms_acceptances").select("terms_version").eq("terms_version", version).maybeSingle();
     if (error) return false;
     return Boolean(data);
   },
-  async accept() {
+  async accept(version = this.CLIENT) {
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "terms.accept" });
     const { error } = await supabase
       .from("terms_acceptances")
-      .insert({ client_id: user.id, terms_version: this.CURRENT });
+      .insert({ client_id: user.id, terms_version: version });
     if (error && !String(error.message).includes("duplicate")) fail(error, "terms.accept");
   },
 };

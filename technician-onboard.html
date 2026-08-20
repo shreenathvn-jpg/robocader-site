@@ -443,6 +443,13 @@
 
       <div id="formMessage" class="hidden text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
 
+      <label id="techTermsWrap" class="flex items-start gap-2 mb-4 text-xs text-slate-600 cursor-pointer">
+        <input id="techTermsCheck" type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-600 shrink-0">
+        <span>I have read and accept the
+          <a href="/terms-technician.html" target="_blank" class="text-blue-600 font-semibold hover:underline">Professional Terms &amp; Confidentiality Agreement</a>
+          — including that clients met through RoboCADer are served only through RoboCADer, and that client-site
+          information stays confidential. <strong>Registration is not complete without this.</strong></span>
+      </label>
       <button type="button" id="saveBtn"
               class="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50">
         <i class="fas fa-check-circle"></i> Complete Onboarding
@@ -541,7 +548,7 @@
 </div>
 
 <script type="module">
-import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=27";
+import { supabase, terms, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=28";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1220,6 +1227,7 @@ async function enterFormMode() {
     $("backToDash").classList.toggle("hidden", !profile);
     // An existing professional is updating, not onboarding - say so.
     if (profile) $("saveBtn").innerHTML = '<i class="fas fa-rotate"></i> Update my profile';
+    terms.accepted(terms.TECH).then((ok) => { if (ok) { $("techTermsWrap").classList.add("hidden"); $("techTermsCheck").checked = true; } }).catch(() => {});
     // Re-hydrate what QA found missing on edit (F2): the ★ identity, and the
     // phone (so the WhatsApp field doesn't reappear empty and save null).
     if (passport?.primary_skill_tag) state.primary = passport.primary_skill_tag;
@@ -1564,6 +1572,11 @@ function validate() {
 }
 
 $("saveBtn").addEventListener("click", async () => {
+  if (!$("techTermsCheck").checked) {
+    banner($("formMessage"), "Please read and accept the Professional Terms - registration is not complete without them.", "error");
+    $("techTermsWrap").scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
   const errors = validate();
 
   if (Object.keys(errors).length) {
@@ -1637,6 +1650,7 @@ $("saveBtn").addEventListener("click", async () => {
       primarySkillTag: primary,
     });
 
+    await terms.accept(terms.TECH).catch(() => {});
     localStorage.removeItem(DRAFT_KEY);
 
     button.disabled = false;
