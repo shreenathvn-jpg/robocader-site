@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consultant Agreement — RoboCADer Pro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/js/config.js"></script>
+<style>@media print { .no-print{display:none!important} body{background:#fff!important} #sheet{box-shadow:none!important;border:none!important} }</style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8">
+
+<div class="max-w-3xl mx-auto">
+  <div class="no-print flex items-center justify-between mb-4">
+    <a href="javascript:history.back()" class="text-sm text-slate-500 hover:text-slate-800">← Back</a>
+    <button onclick="window.print()" class="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700">
+      <i class="fas fa-download"></i> Download / Print (PDF)</button>
+  </div>
+
+  <div id="sheet" class="bg-white border border-slate-200 shadow-sm rounded-lg p-8 text-[13px] leading-relaxed text-slate-800">
+    <p id="loading" class="text-slate-400 text-sm">Loading agreement…</p>
+  </div>
+</div>
+
+<script type="module">
+import { supabase } from "/js/api.js?v=29";
+const params = new URLSearchParams(location.search);
+const sheet = document.getElementById("sheet");
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+(async () => {
+  const id = params.get("assignment");
+  if (!id) { sheet.innerHTML = `<p class="text-red-600 text-sm">No assignment id.</p>`; return; }
+  // admin_assignments carries both parties + rates; RLS gates it to admin.
+  const { data: a, error } = await supabase.from("admin_assignments").select("*").eq("id", id).maybeSingle();
+  if (error || !a) { sheet.innerHTML = `<p class="text-red-600 text-sm">Not found or not authorised. This document is admin-only.</p>`; return; }
+  const { data: org } = await supabase.from("org_settings").select("*").maybeSingle();
+
+  sheet.innerHTML = `
+    <div class="text-center border-b-2 border-slate-800 pb-3">
+      <p class="text-lg font-bold uppercase tracking-wide">Consulting Services Agreement</p>
+      <p class="text-slate-500">Per-assignment engagement · ${esc(a.role_title ?? "")}</p>
+    </div>
+
+    <p class="mt-4">This Agreement is made between <strong>${esc(org?.legal_name ?? "InChi Solutions Private Limited")}</strong>
+      ${org?.gstin ? `(GSTIN ${esc(org.gstin)})` : ""}, ${esc(org?.address ?? "Bengaluru, Karnataka")} ("RoboCADer"),
+      and the professional identified as <strong>${esc(a.passport_no ?? a.technician_name ?? "the Consultant")}</strong> ("the Consultant"),
+      for deployment to <strong>${esc(a.client_name ?? "the Client")}</strong> ("the Client").</p>
+
+    <table class="w-full mt-4 text-slate-700">
+      <tbody>
+        ${[
+          ["Assignment", `${esc(a.role_title ?? "")} — ${esc(a.location_city ?? "")}`],
+          ["Period", `${esc(a.starts_on ?? "")} to ${esc(a.ends_on ?? "")}`],
+          ["Consultant fee (payout)", a.agreed_day_rate != null ? `₹${Number(a.agreed_day_rate).toLocaleString("en-IN")} / day` : "as agreed at acceptance"],
+          ["Payment terms", "Against RoboCADer-approved timesheets, less applicable TDS, by payment advice"],
+          ["Status", esc(a.status ?? "")],
+        ].map(([k,v]) => `<tr class="border-b border-slate-100"><td class="py-2 pr-4 text-slate-400 w-56">${k}</td><td class="py-2 font-medium">${v}</td></tr>`).join("")}
+      </tbody>
+    </table>
+
+    <ol class="list-decimal pl-5 mt-5 space-y-2">
+      <li><strong>Independent consultant.</strong> The Consultant is an independent professional engaged for this
+        assignment only. Nothing here creates employment with RoboCADer or the Client; no ESI, EPF, gratuity or
+        employment benefit arises, and the Consultant handles their own statutory filings on the fee.</li>
+      <li><strong>Scope & conduct.</strong> The Consultant performs the role above at the Client site, follows the
+        Client's lawful safety instructions, keeps attendance honestly (timesheets are the basis of the fee), and
+        reports incidents immediately.</li>
+      <li><strong>Confidentiality.</strong> The Consultant keeps confidential all Client-site information and
+        RoboCADer's commercial terms, per the Professional Terms & Confidentiality Agreement accepted at
+        registration, surviving three (3) years.</li>
+      <li><strong>Non-circumvention.</strong> During this assignment and twelve (12) months after, the Consultant
+        will not work for the Client except through RoboCADer.</li>
+      <li><strong>Insurance.</strong> RoboCADer maintains group personal-accident cover for the assignment period as
+        notified. The Consultant confirms fitness for the work.</li>
+      <li><strong>Governing terms.</strong> This Agreement incorporates the Professional Terms accepted at
+        registration. Indian law; courts at Bengaluru, Karnataka.</li>
+    </ol>
+
+    <div class="grid grid-cols-2 gap-8 mt-10 pt-4">
+      <div class="text-center"><p class="border-t border-slate-300 pt-1 text-[11px] text-slate-500">For RoboCADer (authorised signatory)</p></div>
+      <div class="text-center"><p class="border-t border-slate-300 pt-1 text-[11px] text-slate-500">The Consultant (${esc(a.passport_no ?? "")})</p></div>
+    </div>
+    <p class="mt-6 text-[11px] text-slate-400">Generated by RoboCADer Pro · robocader.com · This is a template — have your CA/legal advisor review before relying on it.</p>`;
+})();
+</script>
+</body>
+</html>
