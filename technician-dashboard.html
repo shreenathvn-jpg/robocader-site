@@ -220,19 +220,35 @@ function renderProfile() {
 
   $("availToggle").checked = Boolean(me?.availability_status);
 
-  $("mySkills").innerHTML = mySkills.length
-    ? mySkills.map((s) => {
-        const c = COMP.get(s.skill_tag);
-        const level = s.assessed_level ?? s.self_level;
-        return `
-          <div class="flex items-start justify-between gap-2">
-            <span class="text-sm text-slate-700 min-w-0">${esc(c?.label ?? s.skill_tag.replace(/_/g, " "))}</span>
+  // A brand (Siemens_PLC) is a DETAIL of its competency (PLC_Programming),
+  // not a second skill. Render details indented under their parent; a detail
+  // whose parent is not held still shows, prefixed with the parent's name.
+  const PARENT_OF = new Map((window.ROBOCADER_COMPETENCIES ?? [])
+    .flatMap((c) => c.details.map((d) => [d.tag, c.tag])));
+  const skillRow = (s, nested) => {
+    const level = s.assessed_level ?? s.self_level;
+    const label = COMP.get(s.skill_tag)?.label ?? DETAIL_LABEL.get(s.skill_tag) ?? s.skill_tag.replace(/_/g, " ");
+    return `
+          <div class="flex items-start justify-between gap-2 ${nested ? "pl-4" : ""}">
+            <span class="text-sm ${nested ? "text-slate-500" : "text-slate-700"} min-w-0">${nested ? '<i class="fas fa-turn-up fa-rotate-90 text-[9px] text-slate-300 mr-1"></i>' : ""}${esc(label)}</span>
             <span class="px-2 py-0.5 rounded-lg text-[11px] font-semibold shrink-0 num ${
-              s.assessed_level ? "bg-green-600 text-white" : "bg-blue-600 text-white"}"
+              s.assessed_level ? "bg-green-600 text-white" : nested ? "bg-slate-500 text-white" : "bg-blue-600 text-white"}"
               title="${s.assessed_level ? "Confirmed by an assessor" : "Self-declared"}">
               ${level} · ${LEVEL_WORD[level] ?? ""}</span>
           </div>`;
-      }).join("")
+  };
+  const parents = mySkills.filter((s) => !PARENT_OF.has(s.skill_tag));
+  const children = mySkills.filter((s) => PARENT_OF.has(s.skill_tag));
+  const ordered = parents.flatMap((par) => [
+    skillRow(par, false),
+    ...children.filter((ch) => PARENT_OF.get(ch.skill_tag) === par.skill_tag).map((ch) => skillRow(ch, true)),
+  ]).concat(
+    // orphan details (parent competency not separately held): still nested-styled
+    children.filter((ch) => !parents.some((par) => par.skill_tag === PARENT_OF.get(ch.skill_tag)))
+      .map((ch) => skillRow(ch, false)),
+  );
+  $("mySkills").innerHTML = mySkills.length
+    ? ordered.join("")
     : `<p class="text-xs text-slate-400">No skills declared yet.</p>`;
 
   // Only things that genuinely raise your chances, in the order they matter.

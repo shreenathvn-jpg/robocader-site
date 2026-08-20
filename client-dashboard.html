@@ -788,6 +788,19 @@ function verificationBadge(status) {
 // value is POINTS (skill out of 50, location out of 30, reliability out of
 // 20 — the weights in rank_candidates). Show each as a percentage of its own
 // maximum, so three bars read on the same scale.
+/**
+ * A brand tag reads as "<competency> · <brand>" on a chip — one skill with a
+ * make, not two skills (QA M3). Unknown tags fall back to their raw words.
+ */
+const CHIP_PARENT = new Map((window.ROBOCADER_COMPETENCIES ?? [])
+  .flatMap((comp) => comp.details.map((d) => [d.tag, { parent: comp.label, label: d.label }])));
+function skillChipLabel(tag) {
+  const d = CHIP_PARENT.get(tag);
+  if (d) return `${d.parent} · ${d.label}`;
+  const comp = (window.ROBOCADER_COMPETENCIES ?? []).find((x) => x.tag === tag);
+  return comp?.label ?? tag.replace(/_/g, " ");
+}
+
 function scoreBar(label, value, max) {
   const pct = Math.max(0, Math.min(100, Math.round(((Number(value) || 0) / max) * 100)));
   return `
@@ -842,7 +855,7 @@ function previewCard(c) {
 
       <div class="flex flex-wrap gap-1 mb-3">
         ${(c.matched_skills ?? []).map((t) =>
-          `<span class="px-2 py-0.5 rounded-md bg-blue-50 text-[11px] text-blue-700">${esc(t.replace(/_/g, " "))}</span>`).join("")}
+          `<span class="px-2 py-0.5 rounded-md bg-blue-50 text-[11px] text-blue-700">${esc(skillChipLabel(t))}</span>`).join("")}
         ${(c.missing_skills ?? []).map((t) =>
           `<span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-400 line-through">${esc(t.replace(/_/g, " "))}</span>`).join("")}
       </div>
