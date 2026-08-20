@@ -48,6 +48,7 @@
      holding the previous skill-tags.js would find no competencies and render
      an empty skill list. Bump this whenever the taxonomy changes. -->
 <script src="/js/skill-tags.js?v=4"></script>
+<script type="module">import { extractSkillTagsWithCompetencies as _extract } from "/js/skill-taxonomy.js?v=1"; window._extractSkills = _extract;</script>
 </head>
 
 <body class="bg-slate-50 min-h-screen p-4 sm:py-10">
@@ -241,6 +242,27 @@
     <div class="space-y-4">
 
       <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Personal details</p>
+
+      <!-- CV upload + auto-fill (047). Private: only you and RoboCADer admins see it. -->
+      <div class="rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/40 p-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-slate-700"><i class="fas fa-file-arrow-up text-blue-600"></i> Upload your CV / resume</p>
+            <p class="text-[11px] text-slate-500">Private — only you and RoboCADer admins ever see it. We use it to help fill your passport.</p>
+          </div>
+          <label class="shrink-0 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold cursor-pointer hover:bg-slate-700">
+            <span id="cvBtnText">Choose file</span>
+            <input id="cvInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt" class="hidden">
+          </label>
+        </div>
+        <p id="cvStatus" class="hidden text-[11px] mt-2"></p>
+        <details class="mt-2">
+          <summary class="text-[11px] text-blue-600 cursor-pointer">…or paste your CV text to auto-fill skills, years &amp; city</summary>
+          <textarea id="cvText" rows="3" placeholder="Paste your CV or a short bio here"
+                    class="w-full mt-2 px-3 py-2 border-2 border-slate-200 rounded-lg text-xs focus:border-blue-500 focus:outline-none"></textarea>
+          <p id="cvAutofill" class="hidden text-[11px] text-blue-700 mt-1"></p>
+        </details>
+      </div>
 
       <div>
         <input id="nameInput" type="text" autocomplete="name" placeholder="Full Name *"
@@ -534,7 +556,7 @@
 </div>
 
 <script type="module">
-import { supabase, terms, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=29";
+import { supabase, terms, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=30";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -568,6 +590,52 @@ const RATES = [1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 6000, 8000];
 const CITIES = ["Hosur","Chennai","Sriperumbudur","Oragadam","Coimbatore","Bengaluru","Pune","Chakan",
   "Ahmedabad","Sanand","Vadodara","Rajkot","Gurugram","Manesar","Bhiwadi","Neemrana","Noida",
   "Jamshedpur","Nashik","Aurangabad","Hyderabad","Sri City","Pithampur","Ludhiana","Baddi","Pantnagar"];
+
+// ---- CV upload + auto-fill (047) ----
+$("cvInput")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const st = $("cvStatus");
+  st.textContent = "Uploading…"; st.className = "text-[11px] mt-2 text-slate-500"; st.classList.remove("hidden");
+  $("cvBtnText").textContent = "Uploading…";
+  try {
+    await passports.uploadCv(file);
+    st.textContent = `✓ ${file.name} saved — private to you and RoboCADer admins.`;
+    st.className = "text-[11px] mt-2 text-green-700";
+    $("cvBtnText").textContent = "Replace file";
+  } catch (err) {
+    st.textContent = err?.message ?? "Upload failed."; st.className = "text-[11px] mt-2 text-red-600";
+    $("cvBtnText").textContent = "Choose file";
+  }
+});
+
+let cvTimer;
+$("cvText")?.addEventListener("input", () => {
+  clearTimeout(cvTimer);
+  cvTimer = setTimeout(() => {
+    const text = $("cvText").value;
+    if (text.trim().length < 20) { $("cvAutofill").classList.add("hidden"); return; }
+    const filled = [];
+    // skills via the taxonomy parser (same engine as the plant describe box)
+    const tags = (window._extractSkills ? window._extractSkills(text) : []).slice(0, 3);
+    if (tags.length) {
+      tags.forEach((t) => { if (!state.skills.has(t)) state.skills.set(t, null); });
+      renderSkills();
+      filled.push(`${tags.length} skill${tags.length === 1 ? "" : "s"}`);
+    }
+    // years
+    const y = text.match(/(\d{1,2})\+?\s*(?:years?|yrs?)/i);
+    if (y && $("experienceInput")) { $("experienceInput").value = Math.min(60, Number(y[1])); filled.push(`${y[1]} yrs`); }
+    // city
+    const lower = text.toLowerCase();
+    const city = CITIES.find((c) => lower.includes(c.toLowerCase()));
+    if (city) { $("citySelect").value = city; filled.push(city); }
+    const el = $("cvAutofill");
+    el.textContent = filled.length ? `Filled from your CV: ${filled.join(" · ")} — review and adjust below.` : "Keep typing — mention your skills, years and city.";
+    el.classList.remove("hidden");
+  }, 400);
+});
+
 
 $("citySelect").innerHTML = `<option value="">Select City *</option>` +
   CITIES.map((c) => `<option value="${c}">${c}</option>`).join("");

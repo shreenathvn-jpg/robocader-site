@@ -471,6 +471,29 @@ export const passports = {
   },
 
   /** Uploads into `<uid>/…`, the path shape migration 004's policies key off. */
+  /** CV upload — private bucket, owner+admin only (047). Returns the stored path. */
+  async uploadCv(file) {
+    const user = await auth.currentUser();
+    if (!user) throw new ApiError("You are not signed in.", { operation: "passports.uploadCv" });
+    const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
+    const path = `${user.id}/cv.${ext}`;
+    const { error } = await supabase.storage.from("cv").upload(path, file, { upsert: true });
+    if (error) fail(error, "passports.uploadCv");
+    // record on the passport (update-then-insert; technician_id is 024-locked)
+    const { data: updated } = await supabase.from("skill_passports")
+      .update({ cv_path: path }).eq("technician_id", user.id).select("technician_id");
+    if (!updated?.length) await supabase.from("skill_passports").insert({ technician_id: user.id, cv_path: path });
+    return path;
+  },
+
+  /** A short-lived signed URL to a CV, if the caller may read it (owner or admin). */
+  async cvUrl(cvPath) {
+    if (!cvPath) return null;
+    const { data, error } = await supabase.storage.from("cv").createSignedUrl(cvPath, 120);
+    if (error) return null;
+    return data?.signedUrl ?? null;
+  },
+
   async uploadCertificate(file, kind = "certificate") {
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "passports.upload" });

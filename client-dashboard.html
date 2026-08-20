@@ -423,7 +423,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=29";
+import { terms, documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=30";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1613,7 +1613,7 @@ async function enterDashboard(user) {
   // Existing plants who have not accepted the current terms: one banner;
   // posting refuses server-side until they do (044 guard).
   if (profile.role_type === "client" && !viewAs.active()) {
-    terms.accepted().then((ok) => {
+    (terms?.accepted ? terms.accepted() : Promise.resolve(true)).then((ok) => {
       if (ok) return;
       const bar = document.createElement("div");
       bar.className = "bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-2xl p-4 mb-4 flex flex-wrap items-center gap-3";
