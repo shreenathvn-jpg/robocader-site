@@ -284,6 +284,12 @@
 
     <form id="projectForm" class="space-y-3" novalidate>
       <div>
+        <div>
+          <textarea id="describeInput" rows="2" placeholder="Describe what you need, in your own words — e.g. &quot;3 Siemens PLC technicians in Chennai for two weeks, ₹4500 a day&quot;"
+                    class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none text-sm"></textarea>
+          <p id="describeEcho" class="hidden text-xs text-blue-700 mt-1.5"></p>
+        </div>
+
         <input id="titleInput" type="text" placeholder="Project title *  e.g. Line 3 PLC retrofit"
                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
         <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="titleInput"></p>
@@ -614,6 +620,52 @@ $("signOutBtn").addEventListener("click", async () => { await auth.signOut(); lo
 // ---------------------------------------------------------------------------
 // Post a requirement
 // ---------------------------------------------------------------------------
+
+/* ---------------- plain-English requirement (E9) ----------------
+   The parser proposes; the plant confirms. Nothing here submits anything —
+   it only pre-fills the same fields the plant could fill by hand. */
+import { extractSkillTagsWithCompetencies } from "/js/skill-taxonomy.js?v=1";
+
+function parseDescription(text) {
+  const out = { skills: [], headcount: null, city: null, rate: null };
+  out.skills = extractSkillTagsWithCompetencies(text);
+  const head = text.match(/(\d{1,2})\s*(?:x\s*)?(?:people|persons?|technicians?|engineers?|professionals?|nos?\b|guys)/i);
+  if (head) out.headcount = Math.min(50, Number(head[1]));
+  const lower = text.toLowerCase();
+  out.city = CITIES.find((c) => lower.includes(c.toLowerCase())) ?? null;
+  const rate = text.match(/(?:₹|rs\.?|inr)\s*([\d,]{3,7})|([\d,]{4,7})\s*(?:\/|per\s*)day/i);
+  if (rate) out.rate = Number((rate[1] ?? rate[2]).replace(/,/g, ""));
+  return out;
+}
+
+let describeTimer;
+$("describeInput").addEventListener("input", () => {
+  clearTimeout(describeTimer);
+  describeTimer = setTimeout(() => {
+    const text = $("describeInput").value;
+    if (text.trim().length < 8) { $("describeEcho").classList.add("hidden"); return; }
+    const p = parseDescription(text);
+    const understood = [];
+    if (p.skills.length) {
+      selectedSkills.clear();
+      p.skills.forEach((t) => selectedSkills.add(t));
+      renderSkillPicker($("skillSearch")?.value ?? "");
+      understood.push(p.skills.map(skillChipLabel).join(", "));
+    }
+    if (p.headcount) { $("headcountInput").value = p.headcount; understood.push(`${p.headcount} people`); }
+    if (p.city)      { $("citySelect").value = p.city; understood.push(p.city); }
+    if (p.rate)      { $("dayRateInput").value = p.rate; understood.push(`₹${p.rate.toLocaleString("en-IN")}/day`); }
+    deriveTotals();
+    const echo = $("describeEcho");
+    if (understood.length) {
+      echo.textContent = `Understood: ${understood.join(" · ")} — check and adjust below.`;
+      echo.classList.remove("hidden");
+    } else {
+      echo.textContent = "Keep typing — mention the skill, how many people, the city and the day rate.";
+      echo.classList.remove("hidden");
+    }
+  }, 400);
+});
 
 /** Days from the dates (inclusive); budget = days × day rate × headcount. */
 function deriveTotals() {
