@@ -1184,6 +1184,8 @@ async function enterFormMode() {
 
     state.profileExists = Boolean(profile);
     $("backToDash").classList.toggle("hidden", !profile);
+    // An existing professional is updating, not onboarding - say so.
+    if (profile) $("saveBtn").innerHTML = '<i class="fas fa-rotate"></i> Update my profile';
     if (profile) {
       $("nameInput").value = profile.full_name ?? $("nameInput").value;
       if (profile.location_city && CITIES.includes(profile.location_city)) {
