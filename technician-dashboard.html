@@ -103,6 +103,11 @@
         </div>
       </div>
 
+      <div id="receiptsCard" class="hidden bg-white rounded-2xl shadow-sm p-5">
+        <p class="text-sm font-semibold mb-2">Payment receipts</p>
+        <div id="receiptsList" class="space-y-1.5"></div>
+      </div>
+
       <div class="bg-white rounded-2xl shadow-sm p-5">
         <p class="text-sm font-semibold mb-3">My skills</p>
         <div id="mySkills" class="space-y-2"></div>
@@ -154,7 +159,7 @@
 </div>
 
 <script type="module">
-import { workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=21";
+import { documents, workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=22";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -661,6 +666,19 @@ $("roleList").addEventListener("click", async (event) => {
 
     renderProfile();
     renderQA();
+
+    documents.mine().then((docs) => {
+      const mine = docs.filter((d) => d.kind === "technician_payment_advice");
+      if (!mine.length) return;
+      $("receiptsCard").classList.remove("hidden");
+      $("receiptsList").innerHTML = mine.map((d) => `
+        <a href="/document.html?id=${d.id}" target="_blank"
+           class="flex items-center justify-between gap-2 text-xs py-1.5 px-2 rounded-lg hover:bg-slate-50">
+          <span class="num font-medium">${d.invoice_no}</span>
+          <span class="num">₹${Number(d.net_payable).toLocaleString("en-IN")}</span>
+          <span class="text-blue-600 font-semibold shrink-0">Download</span>
+        </a>`).join("");
+    }).catch(() => {});
 
     // Fresher standing (033): the marketplace excludes freshers — say so
     // plainly, with the exact way out, instead of a silently empty list.

@@ -195,6 +195,11 @@
          Every client invoice is issued to THIS. issue_client_invoice() refuses
          without it, so the card stays open and amber until it is complete;
          afterwards it collapses to one line with an Edit link. -->
+    <section id="invoicesCard" class="hidden mb-6 bg-white rounded-2xl shadow-sm p-5">
+      <p class="text-sm font-semibold mb-2">Invoices</p>
+      <div id="invoicesList" class="space-y-1.5"></div>
+    </section>
+
     <section id="billingCard" class="hidden mb-6 bg-white rounded-2xl border-2 p-5">
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -409,7 +414,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=21";
+import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=22";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1521,6 +1526,20 @@ $("billingSaveBtn").addEventListener("click", async () => {
 });
 
 async function loadBilling() {
+  try {
+    const docs = (await documents.mine()).filter((d) => d.kind === "client_tax_invoice");
+    if (docs.length) {
+      $("invoicesCard").classList.remove("hidden");
+      $("invoicesList").innerHTML = docs.map((d) => `
+        <a href="/document.html?id=${d.id}" target="_blank"
+           class="flex items-center justify-between gap-2 text-sm py-1.5 px-2 rounded-lg hover:bg-slate-50">
+          <span class="num font-medium">${d.invoice_no}</span>
+          <span class="text-xs text-slate-400">${d.issue_date} · ${d.status}</span>
+          <span class="num">₹${Number(d.total_amount).toLocaleString("en-IN")}</span>
+          <span class="text-blue-600 text-xs font-semibold shrink-0">Download <i class="fas fa-arrow-up-right-from-square"></i></span>
+        </a>`).join("");
+    }
+  } catch { /* invoices are decoration here; billing must still paint */ }
   try { paintBilling(await billing.mine()); }
   catch (error) { RoboMonitor.captureException(error, { operation: "billing.mine" }); }
 }
