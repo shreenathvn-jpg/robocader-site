@@ -643,7 +643,7 @@ $("forgotBtn").addEventListener("click", async () => {
     return;
   }
   try {
-    await auth.sendPasswordReset(email, window.location.href);
+    await auth.sendPasswordReset(email, `${location.origin}/reset.html`);
     banner($("authMessage"), `Reset link sent to ${email}.`, "success");
   } catch (error) {
     banner($("authMessage"), error instanceof ApiError ? error.message : "Could not send the reset link.", "error");
