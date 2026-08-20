@@ -300,9 +300,18 @@ export const skillTest = {
 // ---------------------------------------------------------------------------
 export const documents = {
   async mine() {
+    if (VIEW_BUNDLE) {
+      const pid = VIEW_BUNDLE.profile?.id;
+      const all = await this._list();
+      return all.filter((d) => d.technician_id === pid || d.client_id === pid);
+    }
+    return this._list();
+  },
+
+  async _list() {
     const { data, error } = await supabase
       .from("invoices")
-      .select("id, invoice_no, kind, status, issue_date, taxable_value, total_amount, net_payable")
+      .select("id, invoice_no, kind, status, issue_date, taxable_value, total_amount, net_payable, technician_id, client_id")
       .neq("status", "cancelled")
       .order("issue_date", { ascending: false });
     if (error) fail(error, "documents.mine");
