@@ -522,7 +522,7 @@
 </div>
 
 <script type="module">
-import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=19";
+import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=20";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1206,6 +1206,11 @@ async function enterFormMode() {
     if (passport?.primary_skill_tag) state.primary = passport.primary_skill_tag;
     if (profile?.phone_number && !state.phone) state.phone = profile.phone_number;
     $("whatsappWrap").classList.toggle("hidden", Boolean(state.phone));
+    // The first render ran BEFORE these async loads (QA F2: star, years and
+    // the work list showed stale/empty and a save from that state lost data).
+    // Repaint from the hydrated state.
+    renderSkills();
+    await refreshWork();
     if (profile) {
       $("nameInput").value = profile.full_name ?? $("nameInput").value;
       if (profile.location_city && CITIES.includes(profile.location_city)) {

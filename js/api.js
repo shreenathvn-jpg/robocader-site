@@ -30,7 +30,7 @@ export const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_K
 
 const PROFILE_COLUMNS =
   "id, full_name, role_type, location_city, location_lat, location_lng, " +
-  "daily_rate, availability_status, reliability_score, created_at";
+  "daily_rate, availability_status, reliability_score, created_at, phone_number";
 
 const PROJECT_COLUMNS =
   "id, client_id, title, description, required_skills, location_city, " +
