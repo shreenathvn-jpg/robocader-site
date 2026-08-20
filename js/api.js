@@ -191,6 +191,13 @@ export const profiles = {
     return data;
   },
 
+  /** Own contact bundle (041): phone + emergency contact. Definer-scoped; no column grant exists. */
+  async myContact() {
+    const { data, error } = await supabase.rpc("my_contact");
+    if (error) return null;
+    return data;
+  },
+
   async me() {
     if (VIEW_BUNDLE) return VIEW_BUNDLE.profile;
     const user = await auth.currentUser();
@@ -551,7 +558,8 @@ export const skills = {
 
 const WORK_COLUMNS =
   "id, technician_id, plant_name, client_company, role_title, location_city, " +
-  "started_on, ended_on, is_current, summary, skills_used, verified_status, assignment_id";
+  "started_on, ended_on, is_current, summary, skills_used, verified_status, assignment_id, " +
+  "reference_name, reference_phone, reference_role";
 
 export const workHistory = {
   async mine() {
@@ -596,6 +604,9 @@ export const workHistory = {
       is_current: Boolean(entry.isCurrent),
       summary: entry.summary || null,
       skills_used: entry.skillsUsed ?? [],
+      reference_name: entry.referenceName || null,
+      reference_phone: entry.referencePhone || null,
+      reference_role: entry.referenceRole || null,
     });
 
     if (error) fail(error, "workHistory.add");

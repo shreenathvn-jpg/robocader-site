@@ -285,7 +285,19 @@
       -->
       <div>
         <div class="flex items-baseline justify-between">
-<p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-3 mt-1 border-t border-slate-100" style="margin-left:-0px">Skills &amp; experience</p>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <input id="emgName" type="text" placeholder="Emergency contact name"
+                 class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <input id="emgPhone" type="tel" inputmode="numeric" placeholder="Emergency contact number"
+                 class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-400 -mt-2">Who should a site call in an emergency? Required before your first assignment; never shown to plants.</p>
+
+      <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-3 mt-1 border-t border-slate-100" style="margin-left:-0px">Skills &amp; experience</p>
                     <label class="text-sm font-medium text-slate-700">Your top skills *</label>
           <button type="button" id="levelHelpBtn" class="text-xs text-blue-600 hover:text-blue-800">
             <i class="fas fa-circle-question"></i> What do L1–L4 mean?
@@ -360,6 +372,13 @@
                  class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white">
           <input id="workRole" type="text" placeholder="Your role *  e.g. PLC Commissioning Engineer"
                  class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <input id="workRefName" type="text" placeholder="Reference: supervisor name (optional)"
+                   class="w-full px-3 py-2 border-2 border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none">
+            <input id="workRefPhone" type="tel" inputmode="numeric" placeholder="Reference number"
+                   class="w-full px-3 py-2 border-2 border-slate-200 rounded-xl text-sm num focus:border-blue-500 focus:outline-none">
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">A supervisor who can vouch for this work speeds up your verification.</p>
           <input id="workCity" type="text" list="cityListWork" placeholder="City"
                  class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none bg-white">
           <datalist id="cityListWork"></datalist>
@@ -522,7 +541,7 @@
 </div>
 
 <script type="module">
-import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=22";
+import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=23";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1204,7 +1223,10 @@ async function enterFormMode() {
     // Re-hydrate what QA found missing on edit (F2): the ★ identity, and the
     // phone (so the WhatsApp field doesn't reappear empty and save null).
     if (passport?.primary_skill_tag) state.primary = passport.primary_skill_tag;
-    if (!state.phone) state.phone = (await profiles.myPhone()) || null;
+    const contact = await profiles.myContact();
+    if (!state.phone) state.phone = contact?.phone_number || null;
+    if (contact?.emergency_contact_name)  $("emgName").value = contact.emergency_contact_name;
+    if (contact?.emergency_contact_phone) $("emgPhone").value = contact.emergency_contact_phone;
     $("whatsappWrap").classList.toggle("hidden", Boolean(state.phone));
     // The first render ran BEFORE these async loads (QA F2: star, years and
     // the work list showed stale/empty and a save from that state lost data).
@@ -1422,6 +1444,8 @@ $("saveWorkBtn").addEventListener("click", async () => {
     const entry = {
       plantName: plant,
       roleTitle: role,
+      referenceName: $("workRefName").value.trim() || null,
+      referencePhone: $("workRefPhone").value.trim() || null,
       locationCity: $("workCity").value.trim(),
       // <input type="month"> gives YYYY-MM; the column is a date.
       startedOn: `${start}-01`,
@@ -1601,6 +1625,13 @@ $("saveBtn").addEventListener("click", async () => {
     const l4 = chosenSkills().find((t) => state.skills.get(t) === "L4");
     const primary = l4
       ?? (chosenSkills().includes(state.primary) ? state.primary : chosenSkills()[0] ?? null);
+    if ($("emgName").value.trim() || $("emgPhone").value.trim()) {
+      await profiles.updateSelf({
+        emergency_contact_name: $("emgName").value.trim() || null,
+        emergency_contact_phone: $("emgPhone").value.trim() || null,
+      }).catch((e) => RoboMonitor.captureException(e, { operation: "emergencyContact" }));
+    }
+
     await passports.save({
       yearsExperience: $("experienceInput").value ? Number($("experienceInput").value) : null,
       primarySkillTag: primary,
