@@ -23,6 +23,9 @@
         <li>Pass mark <strong id="ruleMark">70%</strong>. Pass = your level is <strong>verified instantly</strong>.</li>
         <li>Fail = retake after the cooldown period. Honest speed beats guessing.</li>
       </ul>
+      <p class="text-xs text-slate-500 mt-3 bg-slate-50 rounded-xl p-3"><i class="fas fa-camera text-slate-400"></i>
+        The test takes <strong>3 photos</strong> of you — one at the start, two at random moments — to keep tests honest.
+        Only a RoboCADer administrator can see them. Allow the camera when your browser asks.</p>
       <button id="startBtn" class="mt-5 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700">
         Start the test
       </button>
@@ -32,9 +35,11 @@
     <!-- question -->
     <div id="quiz" class="hidden">
       <div class="flex items-center justify-between mb-3">
-        <p class="text-xs text-slate-400 num"><span id="qPos"></span> of <span id="qTotal"></span></p>
+        <p class="text-xs text-slate-400 num"><span id="qPos"></span> of <span id="qTotal"></span>
+          <span id="camDot" class="hidden ml-2 text-[10px] text-red-500"><i class="fas fa-circle animate-pulse"></i> camera on</span></p>
         <p class="text-sm font-bold num" id="clock"></p>
       </div>
+      <video id="camFeed" class="hidden" playsinline muted></video>
       <div class="w-full h-1.5 bg-slate-100 rounded-full mb-4"><div id="clockBar" class="h-1.5 bg-blue-500 rounded-full transition-all duration-1000" style="width:100%"></div></div>
       <p id="qText" class="text-base font-medium text-slate-800 mb-4"></p>
       <div id="qOptions" class="space-y-2"></div>
@@ -53,10 +58,41 @@
 </div>
 
 <script type="module">
-import { auth, skillTest, ApiError } from "/js/api.js?v=17";
+import { auth, skillTest, ApiError } from "/js/api.js?v=18";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
+let camStream = null;
+let photoShots = [];   // positions at which to photograph
+let photoCount = 0;
+
+async function openCamera() {
+  camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 480 }, audio: false });
+  const v = $("camFeed");
+  v.srcObject = camStream;
+  await v.play();
+  $("camDot").classList.remove("hidden");
+}
+
+async function takePhoto() {
+  if (!camStream || !attemptId) return;
+  try {
+    const v = $("camFeed");
+    const canvas = document.createElement("canvas");
+    canvas.width = 480;
+    canvas.height = Math.round(480 * (v.videoHeight / v.videoWidth)) || 360;
+    canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.6));
+    photoCount += 1;
+    await skillTest.uploadPhoto(attemptId, blob, photoCount);
+  } catch { /* a failed upload flags the attempt for review; never block the test */ }
+}
+
+function stopCamera() {
+  camStream?.getTracks().forEach((t) => t.stop());
+  camStream = null;
+  $("camDot").classList.add("hidden");
+}
 const SKILL = params.get("skill");
 const LEVEL = params.get("level") ?? "L1";
 let attemptId = null;
@@ -76,6 +112,7 @@ const say = (text) => { const m = $("msg"); m.textContent = text; m.classList.to
 const show = (id) => { for (const s of ["intro", "quiz", "result"]) $(s).classList.toggle("hidden", s !== id); };
 
 function renderQuestion(r) {
+  if (photoShots.includes(r.position)) takePhoto();   // random mid-test moments
   $("qPos").textContent = r.position;
   $("qTotal").textContent = r.total;
   $("qText").textContent = r.question;
@@ -111,13 +148,18 @@ async function submit(position, index) {
   try {
     const r = await skillTest.answer(attemptId, position, index);
     if (!r.finished) { renderQuestion(r); return; }
+    stopCamera();
     show("result");
-    $("resIcon").textContent = r.passed ? "🎉" : "📚";
+    $("resIcon").textContent = r.passed ? (r.pending_review ? "🕐" : "🎉") : "📚";
     $("resTitle").textContent = r.passed
-      ? `Passed — ${r.score}%. ${LEVEL} in ${label} is now VERIFIED.`
+      ? (r.pending_review
+          ? `Passed — ${r.score}%. Photo check pending.`
+          : `Passed — ${r.score}%. ${LEVEL} in ${label} is now VERIFIED.`)
       : `${r.score}% — not this time (pass mark ${r.pass_mark}%).`;
     $("resDetail").textContent = r.passed
-      ? "Your verified level is live immediately: matching and plants see it now."
+      ? (r.pending_review
+          ? "Some photos did not upload, so an administrator will confirm your result shortly. Nothing more to do."
+          : "Your verified level is live immediately: matching and plants see it now.")
       : "Practise and retake after the cooldown. Your declared level stays on your passport.";
   } catch (error) {
     say(error instanceof ApiError ? error.message : "Something went wrong - your answers so far are saved.");
@@ -133,10 +175,22 @@ $("startBtn").addEventListener("click", async () => {
   $("startBtn").disabled = true;
   say(null);
   try {
+    try {
+      await openCamera();
+    } catch {
+      say("The camera is required for this test. Allow camera access in your browser and try again.");
+      $("startBtn").disabled = false;
+      return;
+    }
     const r = await skillTest.start(SKILL, LEVEL);
     attemptId = r.attempt_id;
+    // photo 1 now; two more at random questions
+    const pool = Array.from({ length: r.total - 1 }, (_, i) => i + 2);
+    photoShots = pool.sort(() => Math.random() - 0.5).slice(0, 2);
+    takePhoto();
     renderQuestion(r);
   } catch (error) {
+    stopCamera();
     $("startBtn").disabled = false;
     say(error instanceof ApiError ? error.message : String(error?.message ?? error));
   }

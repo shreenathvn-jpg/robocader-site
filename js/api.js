@@ -248,6 +248,17 @@ export const profiles = {
 // the browser never sees a correct answer.
 // ---------------------------------------------------------------------------
 export const skillTest = {
+  /** Upload one proctoring photo into the attempt's private folder, then let the database recount. */
+  async uploadPhoto(attemptId, blob, n) {
+    const { error } = await supabase.storage
+      .from("proctoring")
+      .upload(`${attemptId}/${n}.jpg`, blob, { contentType: "image/jpeg", upsert: true });
+    if (error) fail(error, "skillTest.uploadPhoto");
+    const { data, error: syncError } = await supabase.rpc("sync_proctor_images", { p_attempt_id: attemptId });
+    if (syncError) fail(syncError, "skillTest.uploadPhoto.sync");
+    return data;
+  },
+
   async start(skillTag, level) {
     const { data, error } = await supabase.rpc("start_assessment", { p_skill_tag: skillTag, p_level: level });
     if (error) fail(error, "skillTest.start");
@@ -761,7 +772,7 @@ export const admin = {
   async attempts(technicianId) {
     const { data, error } = await supabase
       .from("assessment_attempts")
-      .select("skill_tag, level, status, score_pct, started_at, finished_at")
+      .select("skill_tag, level, status, score_pct, started_at, finished_at, images_uploaded, images_required, proctor_flags")
       .eq("technician_id", technicianId)
       .order("started_at", { ascending: false });
     if (error) fail(error, "admin.attempts");
@@ -773,6 +784,19 @@ export const admin = {
     const { data, error } = await supabase.rpc("admin_view_profile", { p_profile_id: profileId });
     if (error) fail(error, "admin.evidence");
     return data;
+  },
+
+  /** Signed links to an attempt's proctoring photos (admin-only bucket). */
+  async proctorPhotos(attemptId) {
+    const { data: files, error } = await supabase.storage.from("proctoring").list(String(attemptId));
+    if (error) fail(error, "admin.proctorPhotos");
+    const urls = [];
+    for (const f of files ?? []) {
+      const { data, error: signError } = await supabase.storage
+        .from("proctoring").createSignedUrl(`${attemptId}/${f.name}`, 60);
+      if (!signError && data?.signedUrl) urls.push(data.signedUrl);
+    }
+    return urls;
   },
 
   /** Set (or clear with null) the VERIFIED level of one skill. The 011 guard stamps assessed_by/at. */
