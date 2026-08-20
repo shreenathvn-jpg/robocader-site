@@ -822,19 +822,19 @@ function renderRates() {
   $("customRateWrap").classList.toggle("hidden", state.rate !== "custom");
 }
 
-$("rateContainer").addEventListener("click", (event) => {
+$("rateContainer")?.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-rate]");
   if (!chip) return;
   state.rate = chip.dataset.rate === "custom" ? "custom" : Number(chip.dataset.rate);
   renderRates();
-  if (state.rate === "custom") $("rateInput").focus();
+  if (state.rate === "custom") $("rateInput")?.focus();
   saveDraft();
 });
 
 /** Resolves the chosen rate to a number, or null when unset/invalid. */
 function resolvedRate() {
   if (state.rate === "custom") {
-    const value = Number($("rateInput").value);
+    const value = Number($("rateInput")?.value);
     return Number.isFinite(value) && value > 0 ? value : null;
   }
   return state.rate;
@@ -861,7 +861,7 @@ function restoreDraft() {
     if (!d) return;
     $("nameInput").value = d.name ?? "";
     if (d.city) $("citySelect").value = d.city;
-    $("rateInput").value = d.customRate ?? "";
+    if ($("rateInput")) $("rateInput").value = d.customRate ?? "";
     $("experienceInput").value = d.experience ?? "";
     if (d.rate !== undefined) state.rate = d.rate;
     // Older drafts stored a plain array of tags; new ones store [tag, level].
@@ -875,7 +875,7 @@ function restoreDraft() {
   } catch { /* corrupt draft */ }
 }
 
-["nameInput", "rateInput", "experienceInput"].forEach((id) => $(id).addEventListener("input", saveDraft));
+["nameInput", "experienceInput"].forEach((id) => $(id)?.addEventListener("input", saveDraft));
 $("citySelect").addEventListener("change", saveDraft);
 $("availabilityToggle").addEventListener("change", saveDraft);
 
@@ -1240,7 +1240,7 @@ async function enterFormMode() {
         const rate = Number(profile.daily_rate);
         // An existing rate that is not one of the presets goes into "Other".
         if (RATES.includes(rate)) { state.rate = rate; }
-        else { state.rate = "custom"; $("rateInput").value = rate; }
+        else { state.rate = "custom"; if ($("rateInput")) $("rateInput").value = rate; }
         renderRates();
       }
       $("availabilityToggle").checked = profile.availability_status !== false;
