@@ -423,7 +423,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=28";
+import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=29";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -935,7 +935,7 @@ function previewCard(c) {
         ${verificationBadge(c.verified_status)}
         <span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600 num">
           <i class="fas fa-star text-amber-400"></i> ${Number(c.reliability_score).toFixed(1)}</span>
-        ${c.rate_band ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600">${esc(c.rate_band)}</span>` : ""}
+
         ${c.meets_min_level
           ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-green-50 text-green-700">Meets required level</span>`
           : `<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">Below required level</span>`}
@@ -990,7 +990,7 @@ function candidateCard(match) {
         ${verificationBadge(t.verified_status)}
         <span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600 num">
           <i class="fas fa-star text-amber-400"></i> ${Number(t.reliability_score).toFixed(1)}</span>
-        ${t.rate_band ? `<span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600">${esc(t.rate_band)}</span>` : ""}
+
         <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${RESPONSE}">${esc(match.response)}</span>
       </div>
 
