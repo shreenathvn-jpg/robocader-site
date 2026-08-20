@@ -414,7 +414,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=23";
+import { documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=24";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -427,8 +427,9 @@ function showViewAsBanner(profile) {
   const bar = document.createElement("div");
   bar.className = "fixed top-0 inset-x-0 z-50 bg-amber-500 text-white text-center text-sm font-semibold py-1.5";
   bar.textContent = `Admin view (read-only): ${profile?.full_name ?? "profile"} `;
-  const back = document.createElement("a");
-  back.href = "/admin.html"; back.className = "underline ml-1"; back.textContent = "back to console";
+  const back = document.createElement("button");
+  back.type = "button"; back.className = "underline ml-1 font-semibold"; back.textContent = "back to console";
+  back.addEventListener("click", (e) => { e.stopPropagation(); window.location.assign("/admin.html"); });
   bar.appendChild(back);
   document.body.prepend(bar);
   document.body.style.paddingTop = "34px";

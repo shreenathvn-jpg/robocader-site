@@ -159,7 +159,7 @@
 </div>
 
 <script type="module">
-import { documents, workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=23";
+import { documents, workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=24";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -170,12 +170,21 @@ let workCount = 0;
 function showViewAsBanner(profile) {
   const bar = document.createElement("div");
   bar.className = "fixed top-0 inset-x-0 z-50 bg-amber-500 text-white text-center text-sm font-semibold py-1.5";
+  bar.style.zIndex = "9999";
   bar.textContent = `Admin view (read-only): ${profile?.full_name ?? "profile"} `;
-  const back = document.createElement("a");
-  back.href = "/admin.html"; back.className = "underline ml-1"; back.textContent = "back to console";
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "underline ml-1 font-semibold";
+  back.textContent = "back to console";
+  // A button with an explicit assign - immune to any page-level click handler.
+  back.addEventListener("click", (e) => { e.stopPropagation(); window.location.assign("/admin.html"); });
   bar.appendChild(back);
   document.body.prepend(bar);
   document.body.style.paddingTop = "34px";
+  // Read-only means read-only: no editable Q&A boxes, no test links.
+  setTimeout(() => {
+    document.querySelectorAll("#qa textarea, [data-qa-key]").forEach((el) => { el.disabled = true; });
+  }, 800);
 }
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
@@ -272,6 +281,7 @@ function renderProfile() {
           </div>`;
   };
   const testLink = (s) => {
+    if (viewAs.active()) return "";
     if (PARENT_OF.has(s.skill_tag)) return "";
     const next = !s.assessed_level ? "L1" : s.assessed_level === "L1" ? "L2" : null;
     if (!next) return "";
@@ -481,7 +491,10 @@ $("qaList").addEventListener("focusout", async (event) => {
     $("qaCount").textContent = `(${answers.size}/${questionsFor(mySkills.map((s) => s.skill_tag)).length})`;
   } catch (error) {
     RoboMonitor.captureException(error, { operation: "saveAnswer", key });
-    if (status) { status.textContent = "Could not save — check your connection."; status.className = "text-[11px] text-red-600 mt-1"; }
+    if (status) {
+      status.textContent = error instanceof ApiError ? error.message : "Could not save — check your connection.";
+      status.className = "text-[11px] text-red-600 mt-1";
+    }
   }
 });
 
