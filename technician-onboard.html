@@ -285,22 +285,19 @@
         need to be searched, and a search box quietly encourages people to look
         for the skill they wish they had.
       -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input id="emgName" type="text" placeholder="Emergency contact name"
+               class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        <input id="emgPhone" type="tel" inputmode="numeric" placeholder="Emergency contact number"
+               class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
+      </div>
+      <p class="text-[11px] text-slate-400 -mt-1">Who should a site call in an emergency? Required before your first assignment; never shown to plants.</p>
+
+      <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-4 mt-2 border-t border-slate-100">Skills &amp; experience</p>
+
       <div>
         <div class="flex items-baseline justify-between">
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <input id="emgName" type="text" placeholder="Emergency contact name"
-                 class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
-        </div>
-        <div>
-          <input id="emgPhone" type="tel" inputmode="numeric" placeholder="Emergency contact number"
-                 class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl num focus:border-blue-500 focus:outline-none">
-        </div>
-      </div>
-      <p class="text-[11px] text-slate-400 -mt-2">Who should a site call in an emergency? Required before your first assignment; never shown to plants.</p>
-
-      <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-3 mt-1 border-t border-slate-100" style="margin-left:-0px">Skills &amp; experience</p>
-                    <label class="text-sm font-medium text-slate-700">Your top skills *</label>
+          <label class="text-sm font-medium text-slate-700">Your top skills *</label>
           <button type="button" id="levelHelpBtn" class="text-xs text-blue-600 hover:text-blue-800">
             <i class="fas fa-circle-question"></i> What do L1–L4 mean?
           </button>
