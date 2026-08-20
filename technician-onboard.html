@@ -231,10 +231,14 @@
         <h1 class="text-lg font-bold text-slate-800">Your Skill Passport</h1>
         <p class="text-xs text-slate-500">Verified professionals get matched first</p>
       </div>
-      <button type="button" id="signOutBtn" class="ml-auto text-xs text-slate-400 hover:text-slate-700 shrink-0">Sign out</button>
+      <a id="backToDash" href="/technician-dashboard.html"
+         class="hidden ml-auto text-xs font-semibold text-blue-600 hover:text-blue-800 shrink-0"><i class="fas fa-arrow-left"></i> Back to dashboard</a>
+      <button type="button" id="signOutBtn" class="text-xs text-slate-400 hover:text-slate-700 shrink-0 ml-3">Sign out</button>
     </div>
 
     <div class="space-y-4">
+
+      <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Personal details</p>
 
       <div>
         <input id="nameInput" type="text" autocomplete="name" placeholder="Full Name *"
@@ -281,7 +285,8 @@
       -->
       <div>
         <div class="flex items-baseline justify-between">
-          <label class="text-sm font-medium text-slate-700">Your top skills *</label>
+<p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-3 mt-1 border-t border-slate-100" style="margin-left:-0px">Skills &amp; experience</p>
+                    <label class="text-sm font-medium text-slate-700">Your top skills *</label>
           <button type="button" id="levelHelpBtn" class="text-xs text-blue-600 hover:text-blue-800">
             <i class="fas fa-circle-question"></i> What do L1–L4 mean?
           </button>
@@ -1178,6 +1183,7 @@ async function enterFormMode() {
     if (profile?.role_type === "client") { location.replace("/client-dashboard.html"); return; }
 
     state.profileExists = Boolean(profile);
+    $("backToDash").classList.toggle("hidden", !profile);
     if (profile) {
       $("nameInput").value = profile.full_name ?? $("nameInput").value;
       if (profile.location_city && CITIES.includes(profile.location_city)) {
