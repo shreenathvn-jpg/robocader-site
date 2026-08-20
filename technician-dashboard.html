@@ -154,7 +154,7 @@
 </div>
 
 <script type="module">
-import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=13";
+import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=14";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -650,6 +650,21 @@ $("roleList").addEventListener("click", async (event) => {
 
     renderProfile();
     renderQA();
+
+    // Fresher standing (033): the marketplace excludes freshers — say so
+    // plainly, with the exact way out, instead of a silently empty list.
+    if (!viewAs.active()) {
+      technician.standing().then((st) => {
+        if (!st || st.ready !== false) return;
+        const card = document.createElement("div");
+        card.className = "bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-sm text-amber-800";
+        card.innerHTML = `<p class="font-semibold mb-1"><i class="fas fa-seedling"></i> You're starting as a fresher</p>
+          <p>Consultant projects need experience on record. Add <strong>one previous job</strong> (plant, role and dates) or your years of experience, and you'll enter the marketplace the moment it saves — no approval wait.</p>
+          <a href="/technician-onboard.html" class="inline-block mt-2 font-semibold text-amber-900 underline">Add your experience</a>`;
+        const anchor = $("mySkills").closest(".bg-white");
+        anchor?.parentElement?.insertBefore(card, anchor);
+      }).catch(() => {});
+    }
     showTab("projects");
     await Promise.all([renderProjects(), renderRoles()]);
   } catch (error) {

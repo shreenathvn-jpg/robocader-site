@@ -1081,6 +1081,13 @@ export const assignments = {
 // ---------------------------------------------------------------------------
 
 export const technician = {
+  /** Marketplace standing (033): ready flag + exact gaps for the fresher card. */
+  async standing() {
+    const { data, error } = await supabase.rpc("my_market_standing");
+    if (error) fail(error, "technician.standing");
+    return data;
+  },
+
   /**
    * Open projects scored for me.
    *
