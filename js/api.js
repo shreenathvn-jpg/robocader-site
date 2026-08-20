@@ -178,6 +178,7 @@ export const auth = {
 
 export const profiles = {
   async me() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.profile;
     const user = await auth.currentUser();
     if (!user) return null;
 
@@ -201,6 +202,7 @@ export const profiles = {
    * insert — so the direct upsert fails with 42501. See migration 007.
    */
   async createOrUpdate({ fullName, phone, role, city = null, dailyRate = null }) {
+    if (VIEW_BUNDLE) readOnly("createOrUpdate");
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "profiles.createOrUpdate" });
 
@@ -218,6 +220,7 @@ export const profiles = {
 
   /** Edits to the safe columns only — no role_type, no phone_number. */
   async updateSelf(fields) {
+    if (VIEW_BUNDLE) readOnly("updateSelf");
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "profiles.updateSelf" });
 
@@ -227,6 +230,7 @@ export const profiles = {
   },
 
   async setAvailability(available) {
+    if (VIEW_BUNDLE) readOnly("setAvailability");
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "profiles.setAvailability" });
 
@@ -240,11 +244,38 @@ export const profiles = {
 };
 
 // ---------------------------------------------------------------------------
+// Admin view-as (031) — read-only. Active only when the signed-in user is an
+// administrator and the page URL carries ?as=<profile-id>. Readers below serve
+// data from the bundle; every writer refuses. The database refuses too (RLS
+// scopes writes to auth.uid()); the shim just makes the refusal polite.
+// ---------------------------------------------------------------------------
+let VIEW_BUNDLE = null;
+
+export const viewAs = {
+  /** Returns the bundle when ?as= is present and the caller is an admin; null otherwise. */
+  async activate() {
+    const id = new URLSearchParams(window.location.search).get("as");
+    if (!id) return null;
+    const { data, error } = await supabase.rpc("admin_view_profile", { p_profile_id: id });
+    if (error) fail(error, "viewAs.activate");
+    VIEW_BUNDLE = data;
+    return data;
+  },
+  active: () => Boolean(VIEW_BUNDLE),
+  bundle: () => VIEW_BUNDLE,
+};
+
+const readOnly = (operation) => {
+  throw new ApiError("This is a read-only admin view - sign in as the person to act for them.", { operation });
+};
+
+// ---------------------------------------------------------------------------
 // Availability windows (029) — date ranges when the professional can take
 // work. No rows = available any time; the on/off toggle still rules.
 // ---------------------------------------------------------------------------
 export const availability = {
   async list() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.windows ?? [];
     const { data, error } = await supabase
       .from("availability_windows")
       .select("id, starts_on, ends_on")
@@ -255,14 +286,16 @@ export const availability = {
 
   /** technician_id defaults to auth.uid() in the database. */
   async add(startsOn, endsOn) {
+    if (VIEW_BUNDLE) readOnly("availability.add");
     const { error } = await supabase
       .from("availability_windows")
       .insert({ starts_on: startsOn, ends_on: endsOn });
     if (error) fail(error, "availability.add");
   },
 
-  async remove(id) {
-    const { error } = await supabase
+    async remove(id) {
+    if (VIEW_BUNDLE) readOnly("availability.remove");
+  const { error } = await supabase
       .from("availability_windows")
       .delete().eq("id", id);
     if (error) fail(error, "availability.remove");
@@ -275,6 +308,7 @@ export const availability = {
 
 export const passports = {
   async mine() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.passport;
     const user = await auth.currentUser();
     if (!user) return null;
 
@@ -398,6 +432,7 @@ export const skills = {
   },
 
   async mine() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.skills ?? [];
     const user = await auth.currentUser();
     if (!user) return [];
     const { data, error } = await supabase
@@ -530,6 +565,7 @@ export function formatSpan(startedOn, endedOn, isCurrent) {
 
 export const projects = {
   async mine() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.projects ?? [];
     const user = await auth.currentUser();
     if (!user) return [];
 
@@ -547,6 +583,7 @@ export const projects = {
   },
 
   async create(fields) {
+    if (VIEW_BUNDLE) readOnly("create");
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "projects.create" });
 
@@ -573,6 +610,7 @@ export const projects = {
    * technician's response or their alert timestamp, so nobody is asked twice.
    */
   async runMatching(projectId, { limit = 10 } = {}) {
+    if (VIEW_BUNDLE) readOnly("runMatching");
     const { data, error } = await supabase.rpc("run_matching", {
       p_project_id: projectId,
       p_limit: limit,
@@ -900,7 +938,8 @@ export const requirements = {
   /**
    * Creates a role. The client states what THEY will pay; the payout is set by
    * InChi afterwards through price_requirement(). Sending a payout rate here
-   * would be rejected by the column grant, which is the point.
+   * would be rejected by the column grant, which is t    if (VIEW_BUNDLE) readOnly("create");
+he point.
    */
   async create(fields) {
     const { data, error } = await supabase
@@ -978,6 +1017,7 @@ export const assignments = {
    * see what the professional is paid.
    */
   async mine() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.assignments ?? [];
     const user = await auth.currentUser();
     if (!user) return [];
     const { data, error } = await supabase
@@ -995,6 +1035,7 @@ export const assignments = {
    * self-written CV can match. Idempotent. Returns the work_history id.
    */
   async signOff(assignmentId, note = null) {
+    if (VIEW_BUNDLE) readOnly("signOff");
     const { data, error } = await supabase.rpc("sign_off_assignment", {
       p_assignment_id: assignmentId,
       p_note: note,
@@ -1074,6 +1115,7 @@ export const technician = {
   },
 
   async saveAnswer(questionKey, skillTag, answer) {
+    if (VIEW_BUNDLE) readOnly("saveAnswer");
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "technician.saveAnswer" });
 
@@ -1154,6 +1196,7 @@ export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A
 export const billing = {
   /** The signed-in plant's billing identity, or null if not yet entered. */
   async mine() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.billing;
     const user = await auth.currentUser();
     if (!user) return null;
     const { data, error } = await supabase
@@ -1208,6 +1251,7 @@ export const billing = {
 export const ratings = {
   /** Rate (or re-rate) a completed assignment. Returns the professional's new reliability score. */
   async rate(assignmentId, stars, comment = null) {
+    if (VIEW_BUNDLE) readOnly("rate");
     const { data, error } = await supabase.rpc("rate_assignment", {
       p_assignment_id: assignmentId, p_stars: stars, p_comment: comment,
     });
@@ -1216,6 +1260,7 @@ export const ratings = {
   },
   /** Ratings the signed-in plant has given, keyed by assignment id. */
   async mineAsPlant() {
+    if (VIEW_BUNDLE) return Object.fromEntries((VIEW_BUNDLE.ratings_given ?? []).map((r) => [r.assignment_id, r]));
     const user = await auth.currentUser();
     if (!user) return {};
     const { data, error } = await supabase
@@ -1226,6 +1271,7 @@ export const ratings = {
   },
   /** Ratings received by the signed-in professional — stars and project, never the rater. */
   async mineAsProfessional() {
+    if (VIEW_BUNDLE) return VIEW_BUNDLE.ratings ?? [];
     const { data, error } = await supabase
       .from("my_ratings").select("*").order("created_at", { ascending: false });
     if (error) fail(error, "ratings.mineAsProfessional");

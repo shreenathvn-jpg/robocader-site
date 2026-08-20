@@ -154,13 +154,24 @@
 </div>
 
 <script type="module">
-import { availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=11";
+import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=12";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "technician-dashboard" });
 
 const $ = (id) => document.getElementById(id);
+function showViewAsBanner(profile) {
+  const bar = document.createElement("div");
+  bar.className = "fixed top-0 inset-x-0 z-50 bg-amber-500 text-white text-center text-sm font-semibold py-1.5";
+  bar.textContent = `Admin view (read-only): ${profile?.full_name ?? "profile"} `;
+  const back = document.createElement("a");
+  back.href = "/admin.html"; back.className = "underline ml-1"; back.textContent = "back to console";
+  bar.appendChild(back);
+  document.body.prepend(bar);
+  document.body.style.paddingTop = "34px";
+}
+
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
@@ -609,6 +620,18 @@ $("roleList").addEventListener("click", async (event) => {
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     RoboMonitor.setUser({ id: user.id, role: "technician" });
+
+    // Admin view-as (031): activate BEFORE any reads, so every reader below
+    // serves the viewed person's bundle instead of the admin's empty data.
+    if (new URLSearchParams(location.search).get("as")) {
+      try {
+        const bundle = await viewAs.activate();
+        if (bundle && bundle.role_type !== "technician") {
+          location.replace(`/client-dashboard.html${location.search}`); return;
+        }
+        if (bundle) showViewAsBanner(bundle.profile);
+      } catch { /* not an admin: fall through, the role guard routes them */ }
+    }
 
     const [profile, pass, sk, ans] = await Promise.all([
       profiles.me(), passports.mine(), skillsApi.mine(), technician.answers(),

@@ -400,7 +400,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=11";
+import { viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=12";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -409,6 +409,17 @@ RoboMonitor.init({
 });
 
 const $ = (id) => document.getElementById(id);
+function showViewAsBanner(profile) {
+  const bar = document.createElement("div");
+  bar.className = "fixed top-0 inset-x-0 z-50 bg-amber-500 text-white text-center text-sm font-semibold py-1.5";
+  bar.textContent = `Admin view (read-only): ${profile?.full_name ?? "profile"} `;
+  const back = document.createElement("a");
+  back.href = "/admin.html"; back.className = "underline ml-1"; back.textContent = "back to console";
+  bar.appendChild(back);
+  document.body.prepend(bar);
+  document.body.style.paddingTop = "34px";
+}
+
 const selectedSkills = new Set();
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
@@ -1518,6 +1529,17 @@ async function enterDashboard(user) {
   // through setup rather than into a dashboard where every action fails.
   let profile = null;
   try {
+    // Admin view-as (031): activate before any reads (see technician page).
+    if (new URLSearchParams(location.search).get("as")) {
+      try {
+        const bundle = await viewAs.activate();
+        if (bundle && bundle.role_type === "technician") {
+          location.replace(`/technician-dashboard.html${location.search}`); return;
+        }
+        if (bundle) showViewAsBanner(bundle.profile);
+      } catch { /* not an admin: fall through */ }
+    }
+
     profile = await profiles.me();
   } catch (error) {
     RoboMonitor.captureException(error, { operation: "loadClientProfile" });
