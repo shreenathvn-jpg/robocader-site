@@ -127,6 +127,14 @@ export const SKILL_TAXONOMY = [
     aliases: ["delta plc", "delta dvp", "wplsoft", "ispsoft", "dvp series"],
   },
   {
+    tag: "Beckhoff_PLC",
+    label: "Beckhoff",
+    category: "automation",
+    kind: "detail",
+    competency: "PLC_Programming",
+    aliases: ["beckhoff", "beckhoff plc", "twincat", "twincat 3", "ethercat plc"],
+  },
+  {
     tag: "Omron_PLC",
     label: "Omron",
     category: "automation",

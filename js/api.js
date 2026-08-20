@@ -738,6 +738,33 @@ export const milestones = {
 // ---------------------------------------------------------------------------
 
 export const admin = {
+  /** The invisible pricing matrix (034). Admin-only: RLS yields zero rows to anyone else. */
+  rateCard: {
+    async list() {
+      const { data, error } = await supabase
+        .from("skill_rate_card")
+        .select("skill_tag, level, candidate_cost, target_margin_pct, client_rate, active, updated_at")
+        .order("skill_tag").order("level");
+      if (error) fail(error, "admin.rateCard.list");
+      return data ?? [];
+    },
+    async set({ skillTag, level, candidateCost, targetMarginPct = null, active = true, reason = null }) {
+      const { data, error } = await supabase.rpc("admin_set_rate", {
+        p_skill_tag: skillTag, p_level: level, p_candidate_cost: candidateCost,
+        p_target_margin_pct: targetMarginPct, p_active: active, p_reason: reason,
+      });
+      if (error) fail(error, "admin.rateCard.set");
+      return data;
+    },
+    async audit(limit = 30) {
+      const { data, error } = await supabase
+        .from("rate_card_audit").select("*")
+        .order("changed_at", { ascending: false }).limit(limit);
+      if (error) fail(error, "admin.rateCard.audit");
+      return data ?? [];
+    },
+  },
+
   /** True only when the signed-in user has role_type = 'admin'. */
   async isAdmin() {
     const profile = await profiles.me();

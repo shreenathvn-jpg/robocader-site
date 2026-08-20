@@ -26,6 +26,7 @@
 </style>
 
 <script src="/js/config.js"></script>
+<script src="/js/skill-tags.js?v=3"></script>
 <script src="/js/monitoring.js"></script>
 </head>
 
@@ -115,6 +116,29 @@
          appears in the Offers tab; the difference is the margin. -->
     <section data-panel="pricing" class="hidden">
       <p class="text-sm text-slate-500 mb-4">Roles wait here until priced. Professionals see a role only after you set its payout — and only ever the payout, never the client's rate.</p>
+      <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+          <p class="text-sm font-semibold">Rate card <span class="text-[11px] font-normal text-slate-400">skill + level → payout · margin · client rate. Never visible outside this console.</span></p>
+          <button id="rateAuditBtn" class="text-xs text-slate-500 hover:text-slate-800 underline">Recent changes</button>
+        </div>
+        <div class="flex flex-wrap items-end gap-2 mt-3">
+          <div><label class="text-[11px] uppercase tracking-wide text-slate-400">Skill</label>
+            <select id="rcSkill" class="mt-1 px-3 py-2 border-2 border-slate-200 rounded-xl text-sm focus:border-slate-500 focus:outline-none"></select></div>
+          <div><label class="text-[11px] uppercase tracking-wide text-slate-400">Level</label>
+            <select id="rcLevel" class="mt-1 px-3 py-2 border-2 border-slate-200 rounded-xl text-sm num focus:border-slate-500 focus:outline-none">
+              <option>L1</option><option>L2</option><option>L3</option><option>L4</option></select></div>
+          <div><label class="text-[11px] uppercase tracking-wide text-slate-400">Payout / day ₹</label>
+            <input id="rcCost" type="number" min="1" step="50" class="mt-1 w-28 px-3 py-2 border-2 border-slate-200 rounded-xl num focus:border-slate-500 focus:outline-none"></div>
+          <div><label class="text-[11px] uppercase tracking-wide text-slate-400">Margin %</label>
+            <input id="rcMargin" type="number" min="0" max="90" step="1" value="25" class="mt-1 w-20 px-3 py-2 border-2 border-slate-200 rounded-xl num focus:border-slate-500 focus:outline-none"></div>
+          <div class="flex-1 min-w-[10rem]"><label class="text-[11px] uppercase tracking-wide text-slate-400">Reason (audited)</label>
+            <input id="rcReason" type="text" placeholder="e.g. launch pricing" class="mt-1 w-full px-3 py-2 border-2 border-slate-200 rounded-xl text-sm focus:border-slate-500 focus:outline-none"></div>
+          <button id="rcSave" class="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700">Set rate</button>
+        </div>
+        <p id="rcMsg" class="hidden text-sm mt-2"></p>
+        <div id="rateGrid" class="mt-3 overflow-x-auto"></div>
+      </div>
+
       <div id="reqList" class="space-y-3"></div>
     </section>
 
@@ -210,7 +234,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=14";
+import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=15";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "admin" });
@@ -333,6 +357,96 @@ const REQ_STATUS = {
   open: "bg-blue-50 text-blue-700", partially_filled: "bg-amber-50 text-amber-700",
   filled: "bg-green-50 text-green-700", cancelled: "bg-slate-100 text-slate-500",
 };
+const RC_LEVELS = ["L1", "L2", "L3", "L4"];
+let rateCardRows = [];
+
+function tagLabel(tag) {
+  const all = window.ROBOCADER_COMPETENCIES ?? [];
+  for (const c of all) {
+    if (c.tag === tag) return c.label;
+    const d = (c.details ?? []).find((x) => x.tag === tag);
+    if (d) return `${c.label} · ${d.label}`;
+  }
+  return tag.replace(/_/g, " ");
+}
+
+function renderRateCard() {
+  // Skill select: competencies then details, once.
+  if (!$("rcSkill").options.length) {
+    const all = window.ROBOCADER_COMPETENCIES ?? [];
+    const opts = [];
+    for (const c of all) {
+      opts.push(`<option value="${c.tag}">${esc(c.label)}</option>`);
+      for (const d of (c.details ?? [])) opts.push(`<option value="${d.tag}">&nbsp;&nbsp;${esc(c.label)} · ${esc(d.label)}</option>`);
+    }
+    $("rcSkill").innerHTML = opts.join("");
+  }
+  if (!rateCardRows.length) {
+    $("rateGrid").innerHTML = `<p class="text-xs text-slate-400">No rates set yet. Every cell you set here pre-fills the payout box on matching roles below.</p>`;
+    return;
+  }
+  const bySkill = new Map();
+  for (const r of rateCardRows) {
+    if (!bySkill.has(r.skill_tag)) bySkill.set(r.skill_tag, {});
+    bySkill.get(r.skill_tag)[r.level] = r;
+  }
+  $("rateGrid").innerHTML = `<table class="text-sm w-full"><thead>
+    <tr class="text-[11px] uppercase tracking-wide text-slate-400 text-left">
+      <th class="py-1 pr-3">Skill</th>${RC_LEVELS.map((l) => `<th class="py-1 pr-3 num">${l} payout → client</th>`).join("")}
+    </tr></thead><tbody>${[...bySkill.entries()].map(([tag, levels]) => `
+    <tr class="border-t border-slate-100">
+      <td class="py-1.5 pr-3 font-medium">${esc(tagLabel(tag))}</td>
+      ${RC_LEVELS.map((l) => {
+        const c = levels[l];
+        if (!c) return `<td class="py-1.5 pr-3 text-slate-300 num">—</td>`;
+        return `<td class="py-1.5 pr-3 num ${c.active ? "" : "line-through text-slate-300"}">
+          ₹${Number(c.candidate_cost).toLocaleString("en-IN")} → ₹${Number(c.client_rate).toLocaleString("en-IN")}
+          <span class="text-[11px] text-slate-400">(${Number(c.target_margin_pct)}%)</span></td>`;
+      }).join("")}
+    </tr>`).join("")}</tbody></table>`;
+}
+
+async function refreshRateCard() {
+  try { rateCardRows = await admin.rateCard.list(); } catch { rateCardRows = []; }
+  renderRateCard();
+}
+
+const rcSay = (text, bad) => {
+  const m = $("rcMsg");
+  m.textContent = text;
+  m.className = `text-sm mt-2 ${bad ? "text-red-600" : "text-green-700"}`;
+};
+
+$("rcSave").addEventListener("click", async () => {
+  try {
+    const r = await admin.rateCard.set({
+      skillTag: $("rcSkill").value, level: $("rcLevel").value,
+      candidateCost: Number($("rcCost").value),
+      targetMarginPct: $("rcMargin").value === "" ? null : Number($("rcMargin").value),
+      reason: $("rcReason").value.trim() || null,
+    });
+    rcSay(`${tagLabel(r.skill_tag)} ${r.level}: payout ₹${Number(r.candidate_cost).toLocaleString("en-IN")} → client ₹${Number(r.client_rate).toLocaleString("en-IN")}. Saved and audited.`);
+    await refreshRateCard();
+    renderRequirements();
+  } catch (error) { rcSay(error.message, true); }
+});
+
+$("rateAuditBtn").addEventListener("click", async () => {
+  try {
+    const rows = await admin.rateCard.audit(15);
+    rcSay(rows.length
+      ? rows.map((a) => `${a.changed_at.slice(0, 16).replace("T", " ")} — ${tagLabel(a.skill_tag)} ${a.level}: ${a.old_cost ?? "new"} → ${a.new_cost}${a.reason ? ` (${a.reason})` : ""}`).join("  ·  ")
+      : "No changes yet.");
+  } catch (error) { rcSay(error.message, true); }
+});
+
+/** Card suggestion for a role: the rate for its first required skill at its min level. */
+function cardSuggestion(r) {
+  const tag = (r.required_skills ?? [])[0];
+  const hit = rateCardRows.find((c) => c.skill_tag === tag && c.level === (r.min_skill_level ?? "L2") && c.active);
+  return hit ?? null;
+}
+
 function renderRequirements() {
   const rows = cache.requirements ?? [];
   const unpriced = rows.filter((r) => r.technician_day_rate == null && r.status !== "cancelled").length;
@@ -373,6 +487,10 @@ function renderRequirements() {
           <input type="number" min="0" step="1" data-payout-ot="${r.id}" value="${priced ? Number(r.technician_ot_hour_rate ?? 0) : ""}" placeholder="0"
                  class="mt-1 w-28 px-3 py-2 border-2 border-slate-200 rounded-xl num focus:border-slate-500 focus:outline-none">
         </div>
+        ${(() => { const c = !priced && cardSuggestion(r); return c ? `
+          <button data-fill-card="${r.id}" data-cost="${Number(c.candidate_cost)}" title="From the rate card: ${esc(tagLabel(c.skill_tag))} ${c.level}"
+            class="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100">
+            Card: ₹${Number(c.candidate_cost).toLocaleString("en-IN")} → ₹${Number(c.client_rate).toLocaleString("en-IN")}</button>` : ""; })()}
         <button data-price="${r.id}"
                 class="px-4 py-2 rounded-xl text-sm font-semibold ${priced ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-900 text-white hover:bg-slate-700"}">
           ${priced ? "Update payout" : "Set payout & publish"}
@@ -601,6 +719,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const fill = event.target.closest("[data-fill-card]");
+  if (fill) {
+    const input = document.querySelector(`[data-payout="${fill.dataset.fillCard}"]`);
+    if (input) { input.value = fill.dataset.cost; input.focus(); }
+    return;
+  }
   const price = event.target.closest("[data-price]");
   if (price) {
     const id = price.dataset.price;
@@ -675,6 +799,7 @@ async function loadAll() {
     ]);
     cache = { technicians, projects, timesheets, invoices, requirements: reqs };
     renderTechnicians(); renderProjects(); renderRequirements(); renderTimesheets(); renderInvoices();
+    refreshRateCard();
     fillTimesheetSelects();
   } catch (error) {
     RoboMonitor.captureException(error, { operation: "admin.loadAll" });

@@ -2,7 +2,7 @@
  * GENERATED FILE — DO NOT EDIT.
  * Run `npm run sync:tags` to regenerate from api/lib/skill-taxonomy.js.
  *
- * 16 rated competencies, 38 canonical tags in total.
+ * 16 rated competencies, 39 canonical tags in total.
  * These must match skill_passports.skills_array and projects.required_skills
  * exactly, or the Postgres array-overlap match silently returns nothing.
  */
@@ -34,6 +34,10 @@ window.ROBOCADER_COMPETENCIES = [
       {
         "tag": "Delta_PLC",
         "label": "Delta"
+      },
+      {
+        "tag": "Beckhoff_PLC",
+        "label": "Beckhoff"
       },
       {
         "tag": "Omron_PLC",
@@ -290,6 +294,12 @@ window.ROBOCADER_SKILL_TAGS = [
   {
     "tag": "Delta_PLC",
     "label": "Delta",
+    "kind": "detail",
+    "competency": "PLC_Programming"
+  },
+  {
+    "tag": "Beckhoff_PLC",
+    "label": "Beckhoff",
     "kind": "detail",
     "competency": "PLC_Programming"
   },
