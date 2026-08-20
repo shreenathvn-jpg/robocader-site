@@ -234,7 +234,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=16";
+import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=17";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "admin" });
@@ -371,7 +371,7 @@ async function openAssessPanel(technicianId) {
   box.classList.remove("hidden");
   box.innerHTML = `<p class="text-xs text-slate-400 mt-3">Loading evidence…</p>`;
   try {
-    const ev = await admin.evidence(technicianId);
+    const [ev, tests] = await Promise.all([admin.evidence(technicianId), admin.attempts(technicianId).catch(() => [])]);
     const wh = ev.work_history ?? [];
     const verified = wh.filter((w) => w.verified_status === "verified").length;
     const stars = (ev.ratings ?? []).map((r) => Number(r.stars));
@@ -399,6 +399,8 @@ async function openAssessPanel(technicianId) {
               <span data-assess-msg="${r.skill_tag}" class="text-xs"></span>
             </div>`).join("")}
         </div>
+        ${tests.length ? `<p class="text-[11px] text-slate-500 mt-2"><span class="font-semibold text-slate-700">Tests:</span>
+          ${tests.map((t) => `${esc(tagLabel(t.skill_tag))} ${t.level} — ${t.status === "passed" ? `✓ passed ${Number(t.score_pct)}%` : t.status === "failed" ? `✗ ${Number(t.score_pct)}%` : t.status} (${(t.finished_at ?? t.started_at).slice(0, 10)})`).join(" · ")}</p>` : ""}
         <p class="text-[11px] text-slate-400 mt-2">Verifying a skill at L4 makes it this professional's identity automatically (one L4 per person, enforced by the database).</p>
       </div>`;
   } catch (error) {

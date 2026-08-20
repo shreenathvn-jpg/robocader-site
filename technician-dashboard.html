@@ -154,7 +154,7 @@
 </div>
 
 <script type="module">
-import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=16";
+import { viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=17";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -265,6 +265,14 @@ function renderProfile() {
               ${level} · ${LEVEL_WORD[level] ?? ""}</span>
           </div>`;
   };
+  const testLink = (s) => {
+    if (PARENT_OF.has(s.skill_tag)) return "";
+    const next = !s.assessed_level ? "L1" : s.assessed_level === "L1" ? "L2" : null;
+    if (!next) return "";
+    return `<a href="/skill-test.html?skill=${s.skill_tag}&level=${next}"
+      class="block text-[11px] text-blue-600 hover:underline mt-0.5">
+      <i class="fas fa-clipboard-check"></i> Take the ${next} test — verify this skill</a>`;
+  };
   const parents = mySkills.filter((s) => !PARENT_OF.has(s.skill_tag));
   const children = mySkills.filter((s) => PARENT_OF.has(s.skill_tag));
   const ordered = parents.flatMap((par) => [
@@ -276,7 +284,7 @@ function renderProfile() {
       .map((ch) => skillRow(ch, false)),
   );
   $("mySkills").innerHTML = mySkills.length
-    ? ordered.join("")
+    ? ordered.join("") + parents.map(testLink).join("")
     : `<p class="text-xs text-slate-400">No skills declared yet.</p>`;
 
   // Only things that genuinely raise your chances, in the order they matter.

@@ -244,6 +244,25 @@ export const profiles = {
 };
 
 // ---------------------------------------------------------------------------
+// L1/L2 skill tests (036) — questions served and graded by the database;
+// the browser never sees a correct answer.
+// ---------------------------------------------------------------------------
+export const skillTest = {
+  async start(skillTag, level) {
+    const { data, error } = await supabase.rpc("start_assessment", { p_skill_tag: skillTag, p_level: level });
+    if (error) fail(error, "skillTest.start");
+    return data;
+  },
+  async answer(attemptId, position, answerIndex) {
+    const { data, error } = await supabase.rpc("answer_question", {
+      p_attempt_id: attemptId, p_position: position, p_answer_index: answerIndex,
+    });
+    if (error) fail(error, "skillTest.answer");
+    return data;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Admin view-as (031) — read-only. Active only when the signed-in user is an
 // administrator and the page URL carries ?as=<profile-id>. Readers below serve
 // data from the bundle; every writer refuses. The database refuses too (RLS
@@ -738,6 +757,17 @@ export const milestones = {
 // ---------------------------------------------------------------------------
 
 export const admin = {
+  /** Test attempts for one professional (RLS: admin sees all). */
+  async attempts(technicianId) {
+    const { data, error } = await supabase
+      .from("assessment_attempts")
+      .select("skill_tag, level, status, score_pct, started_at, finished_at")
+      .eq("technician_id", technicianId)
+      .order("started_at", { ascending: false });
+    if (error) fail(error, "admin.attempts");
+    return data ?? [];
+  },
+
   /** The evidence pack for one profile (031 bundle): skills, work history, ratings, assignments. */
   async evidence(profileId) {
     const { data, error } = await supabase.rpc("admin_view_profile", { p_profile_id: profileId });

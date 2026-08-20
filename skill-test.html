@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill test — RoboCADer Pro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="/js/config.js"></script>
+<script src="/js/skill-tags.js?v=3"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-start justify-center p-4 pt-10">
+
+<div class="w-full max-w-xl">
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+
+    <!-- intro -->
+    <div id="intro">
+      <h1 class="text-lg font-bold text-slate-800"><i class="fas fa-clipboard-check text-blue-600"></i> <span id="testTitle">Skill test</span></h1>
+      <ul class="text-sm text-slate-600 mt-3 space-y-1.5 list-disc pl-5">
+        <li><strong id="ruleCount">10 questions</strong>, one at a time — you cannot go back.</li>
+        <li>Each question has its own timer. <strong>A late answer counts as wrong</strong>, decided by the server, not this page.</li>
+        <li>Pass mark <strong id="ruleMark">70%</strong>. Pass = your level is <strong>verified instantly</strong>.</li>
+        <li>Fail = retake after the cooldown period. Honest speed beats guessing.</li>
+      </ul>
+      <button id="startBtn" class="mt-5 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700">
+        Start the test
+      </button>
+      <a href="/technician-dashboard.html" class="block text-center text-xs text-slate-400 hover:text-slate-600 mt-3">← Back to dashboard</a>
+    </div>
+
+    <!-- question -->
+    <div id="quiz" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs text-slate-400 num"><span id="qPos"></span> of <span id="qTotal"></span></p>
+        <p class="text-sm font-bold num" id="clock"></p>
+      </div>
+      <div class="w-full h-1.5 bg-slate-100 rounded-full mb-4"><div id="clockBar" class="h-1.5 bg-blue-500 rounded-full transition-all duration-1000" style="width:100%"></div></div>
+      <p id="qText" class="text-base font-medium text-slate-800 mb-4"></p>
+      <div id="qOptions" class="space-y-2"></div>
+    </div>
+
+    <!-- result -->
+    <div id="result" class="hidden text-center py-4">
+      <p id="resIcon" class="text-4xl mb-3"></p>
+      <p id="resTitle" class="text-lg font-bold"></p>
+      <p id="resDetail" class="text-sm text-slate-600 mt-2"></p>
+      <a href="/technician-dashboard.html" class="inline-block mt-5 px-6 py-3 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-700">Back to my dashboard</a>
+    </div>
+
+    <p id="msg" class="hidden mt-4 text-sm rounded-xl p-3 bg-red-50 text-red-700"></p>
+  </div>
+</div>
+
+<script type="module">
+import { auth, skillTest, ApiError } from "/js/api.js?v=17";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const SKILL = params.get("skill");
+const LEVEL = params.get("level") ?? "L1";
+let attemptId = null;
+let timer = null;
+
+const label = (() => {
+  for (const c of (window.ROBOCADER_COMPETENCIES ?? [])) {
+    if (c.tag === SKILL) return c.label;
+    const d = (c.details ?? []).find((x) => x.tag === SKILL);
+    if (d) return d.label;
+  }
+  return (SKILL ?? "").replace(/_/g, " ");
+})();
+$("testTitle").textContent = `${label} — ${LEVEL} test`;
+
+const say = (text) => { const m = $("msg"); m.textContent = text; m.classList.toggle("hidden", !text); };
+const show = (id) => { for (const s of ["intro", "quiz", "result"]) $(s).classList.toggle("hidden", s !== id); };
+
+function renderQuestion(r) {
+  $("qPos").textContent = r.position;
+  $("qTotal").textContent = r.total;
+  $("qText").textContent = r.question;
+  $("qOptions").innerHTML = r.options.map((o, i) => `
+    <button data-opt="${i}" class="w-full text-left px-4 py-3 rounded-xl border-2 border-slate-200 text-sm hover:border-blue-400 hover:bg-blue-50/50">
+      ${String.fromCharCode(65 + i)}. ${o.replace(/</g, "&lt;")}</button>`).join("");
+  show("quiz");
+  startClock(r.seconds, r.position);
+}
+
+function startClock(seconds, position) {
+  clearInterval(timer);
+  let left = seconds;
+  const paint = () => {
+    $("clock").textContent = `${left}s`;
+    $("clock").className = `text-sm font-bold num ${left <= 10 ? "text-red-600" : "text-slate-700"}`;
+    $("clockBar").style.width = `${Math.max(0, (left / seconds) * 100)}%`;
+  };
+  paint();
+  timer = setInterval(async () => {
+    left -= 1;
+    paint();
+    if (left <= 0) {
+      clearInterval(timer);
+      await submit(position, -1);   // time out: the server scores it wrong anyway
+    }
+  }, 1000);
+}
+
+async function submit(position, index) {
+  clearInterval(timer);
+  document.querySelectorAll("[data-opt]").forEach((b) => { b.disabled = true; });
+  try {
+    const r = await skillTest.answer(attemptId, position, index);
+    if (!r.finished) { renderQuestion(r); return; }
+    show("result");
+    $("resIcon").textContent = r.passed ? "🎉" : "📚";
+    $("resTitle").textContent = r.passed
+      ? `Passed — ${r.score}%. ${LEVEL} in ${label} is now VERIFIED.`
+      : `${r.score}% — not this time (pass mark ${r.pass_mark}%).`;
+    $("resDetail").textContent = r.passed
+      ? "Your verified level is live immediately: matching and plants see it now."
+      : "Practise and retake after the cooldown. Your declared level stays on your passport.";
+  } catch (error) {
+    say(error instanceof ApiError ? error.message : "Something went wrong - your answers so far are saved.");
+  }
+}
+
+$("qOptions")?.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-opt]");
+  if (b && !b.disabled) submit(Number($("qPos").textContent), Number(b.dataset.opt));
+});
+
+$("startBtn").addEventListener("click", async () => {
+  $("startBtn").disabled = true;
+  say(null);
+  try {
+    const r = await skillTest.start(SKILL, LEVEL);
+    attemptId = r.attempt_id;
+    renderQuestion(r);
+  } catch (error) {
+    $("startBtn").disabled = false;
+    say(error instanceof ApiError ? error.message : String(error?.message ?? error));
+  }
+});
+
+// must be signed in
+auth.currentUser().then((u) => { if (!u) location.replace("/technician-onboard.html"); });
+</script>
+</body>
+</html>
