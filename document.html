@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Document — RoboCADer Pro</title>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -35,7 +37,7 @@ import { supabase } from "/js/api.js?v=28";
 
 const params = new URLSearchParams(location.search);
 const sheet = document.getElementById("sheet");
-const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const esc = (v) => String(v ?? "").replace(/[&<>"\x27]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","\x27":"&#39;" }[c]));
 const inr = (n) => "₹" + Number(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 
 // Indian-system amount in words (rupees only, sufficient for a tax document).
