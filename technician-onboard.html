@@ -522,7 +522,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=19";
+import { supabase, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=19";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1266,7 +1266,24 @@ $("levelHelpBtn").addEventListener("click", async () => {
       RoboMonitor.captureException(error, { operation: "levelGuide" });
       // Definitions live in the database; if unreachable, say so rather than
       // showing a hardcoded copy that could drift out of date.
-      panel.innerHTML = `<p class="text-xs text-slate-400">Could not load the level guide.</p>`;
+      panel.innerHTML = `<p class="text-xs text-slate-400">Could not load the level guide.</p>
+      <button type="button" id="resendConfirmBtn"
+              class="mt-3 px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200">
+        Nothing after 2 minutes? Resend the email</button>
+      <p id="resendMsg" class="hidden text-xs mt-2"></p>
+  `;
+  document.getElementById("resendConfirmBtn")?.addEventListener("click", async (ev) => {
+    ev.target.disabled = true;
+    const m = document.getElementById("resendMsg");
+    const { error } = await supabase.auth.resend({
+      type: "signup", email,
+      options: { emailRedirectTo: window.location.href },
+    });
+    ev.target.disabled = false;
+    m.textContent = error ? error.message : "Sent. Open the NEWEST email - older links stop working.";
+    m.className = `text-xs mt-2 ${error ? "text-red-600" : "text-green-700"}`;
+    m.classList.remove("hidden");
+  });
       panel.classList.remove("hidden");
       return;
     }

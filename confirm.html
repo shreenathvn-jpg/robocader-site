@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confirming — RoboCADer Pro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- WHY THIS PAGE EXISTS
+     The default {{ .ConfirmationURL }} is a very long link that email
+     transit (quoted-printable soft line breaks) sometimes corrupts — QA saw
+     "a bad byte where = should be" and links that open nothing. This page
+     takes a SHORT link: /confirm.html?token_hash=...&type=email — short
+     enough to survive any mail client — and exchanges the hash for a session
+     here, then routes by role. -->
+<script src="/js/config.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 w-full max-w-md text-center">
+  <div class="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold mx-auto mb-4">R</div>
+  <p id="state" class="text-sm text-slate-600">Confirming your email address…</p>
+  <div id="failed" class="hidden">
+    <p class="text-sm text-red-700 bg-red-50 rounded-xl p-4 mt-3 mb-4">
+      This confirmation link has expired or was already used.
+    </p>
+    <input id="emailInput" type="email" autocomplete="email" placeholder="Your email"
+           class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
+    <button id="resendBtn" class="w-full py-3 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-700">
+      Send me a fresh confirmation email
+    </button>
+    <p id="msg" class="hidden mt-3 text-sm rounded-xl p-3"></p>
+  </div>
+</div>
+
+<script type="module">
+import { auth, supabase, ApiError } from "/js/api.js?v=19";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const say = (text, bad) => {
+  const m = $("msg");
+  m.textContent = text;
+  m.className = "mt-3 text-sm rounded-xl p-3 " + (bad ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700");
+};
+
+async function routeSignedIn() {
+  const { data } = await supabase.from("profiles").select("role_type").maybeSingle();
+  const role = data?.role_type;
+  if (role === "admin")  { location.replace("/admin.html"); return; }
+  if (role === "client") { location.replace("/client-dashboard.html"); return; }
+  if (role === "technician") { location.replace("/technician-dashboard.html"); return; }
+  // no profile yet: honour the role bound at signup (F14)
+  const meta = (await auth.currentUser())?.user_metadata;
+  location.replace(meta?.intended_role === "client" ? "/client-dashboard.html" : "/technician-onboard.html");
+}
+
+(async () => {
+  const tokenHash = params.get("token_hash");
+  const type = params.get("type") ?? "email";
+  if (!tokenHash) { $("state").textContent = "This page works only from a confirmation email."; $("failed").classList.remove("hidden"); return; }
+  const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+  if (error) {
+    $("state").textContent = "";
+    $("failed").classList.remove("hidden");
+    return;
+  }
+  $("state").textContent = "Confirmed — taking you in…";
+  await routeSignedIn();
+})();
+
+$("resendBtn").addEventListener("click", async () => {
+  const email = $("emailInput").value.trim();
+  if (!email) { say("Enter your email first.", true); return; }
+  $("resendBtn").disabled = true;
+  const { error } = await supabase.auth.resend({
+    type: "signup", email,
+    options: { emailRedirectTo: `${location.origin}/technician-onboard.html` },
+  });
+  $("resendBtn").disabled = false;
+  if (error) { say(error.message, true); return; }
+  say("If that email has an unconfirmed account, a fresh link is on its way. Open the newest email.");
+});
+</script>
+</body>
+</html>
