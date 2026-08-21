@@ -108,9 +108,9 @@
   </header>
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-    <section data-panel="technicians"><div id="techList" class="space-y-3"></div></section>
+    <section data-panel="technicians"><div id="techFilter"></div><div id="techList" class="space-y-3"></div></section>
 
-    <section data-panel="projects" class="hidden"><div id="projList" class="space-y-3"></div></section>
+    <section data-panel="projects" class="hidden"><div id="projFilter"></div><div id="projList" class="space-y-3"></div></section>
 
     <!-- PRICING. A role a plant has posted is invisible to every professional
          until InChi sets what the professional will be paid. This is that
@@ -151,6 +151,7 @@
         <div id="rateGrid" class="mt-3 overflow-x-auto"></div>
       </div>
 
+      <div id="reqFilter"></div>
       <div id="reqList" class="space-y-3"></div>
     </section>
 
@@ -209,10 +210,11 @@
           Create timesheet
         </button>
       </div>
+      <div id="tsFilter"></div>
       <div id="tsList" class="space-y-3"></div>
     </section>
 
-    <section data-panel="invoices" class="hidden"><div id="invList" class="space-y-3"></div></section>
+    <section data-panel="invoices" class="hidden"><div id="invFilter"></div><div id="invList" class="space-y-3"></div></section>
 
     <section data-panel="settings" class="hidden">
       <div class="bg-white rounded-2xl shadow-sm p-5 max-w-lg">
@@ -247,6 +249,7 @@
 
 <script type="module">
 import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=31";
+import { createFilterBar, YEAR_BUCKETS } from "/js/filterbar.js?v=1";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "admin" });
@@ -258,6 +261,9 @@ const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR",
 const dayFmt = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" });
 const dateRange = (a, b) => (a && b ? `${dayFmt.format(new Date(a))} – ${dayFmt.format(new Date(b))}` : "—");
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const emptyCard = (msg) => `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">${esc(msg)}</div>`;
+const pricedLabel = (r) => (r.technician_day_rate != null ? "Priced" : "Unpriced");
+const kindLabel = (i) => (i.kind === "technician_payment_advice" ? "Payment advice" : "Tax invoice");
 
 const BANNER = {
   info: "bg-slate-100 text-slate-700",
@@ -332,11 +338,12 @@ function archiveBtn(kind, row) {
 }
 
 function renderTechnicians() {
-  const rows = notArchived(cache.technicians);
-  if (!rows.length) {
-    $("techList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No technicians registered yet.</div>`;
-    return;
-  }
+  const all = notArchived(cache.technicians);
+  techFB.setData(all);
+  const rows = techFB.apply(all);
+  techFB.setCount(rows.length, all.length);
+  if (!all.length)  { $("techList").innerHTML = emptyCard("No technicians registered yet."); return; }
+  if (!rows.length) { $("techList").innerHTML = emptyCard("No technicians match these filters."); return; }
   $("techList").innerHTML = rows.map((t) => `
     <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4 ${t.archived_at ? "opacity-60" : ""}">
       <div class="min-w-0 flex-1">
@@ -551,11 +558,19 @@ function cardSuggestion(r) {
 }
 
 function renderRequirements() {
-  const rows = cache.requirements ?? [];
-  const unpriced = rows.filter((r) => r.technician_day_rate == null && r.status !== "cancelled").length;
+  const all = cache.requirements ?? [];
+  reqFB.setData(all);
+  const rows = reqFB.apply(all);
+  reqFB.setCount(rows.length, all.length);
+  // The tab badge counts ALL unpriced roles, never the filtered subset.
+  const unpriced = all.filter((r) => r.technician_day_rate == null && r.status !== "cancelled").length;
   $("pricingCount").textContent = unpriced ? `(${unpriced})` : "";
+  if (!all.length) {
+    $("reqList").innerHTML = emptyCard("No roles posted yet.");
+    return;
+  }
   if (!rows.length) {
-    $("reqList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No roles posted yet.</div>`;
+    $("reqList").innerHTML = emptyCard("No roles match these filters.");
     return;
   }
   $("reqList").innerHTML = rows.map((r) => {
@@ -608,11 +623,12 @@ function renderRequirements() {
 }
 
 function renderProjects() {
-  const projRows = notArchived(cache.projects);
-  if (!projRows.length) {
-    $("projList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No projects posted yet.</div>`;
-    return;
-  }
+  const all = notArchived(cache.projects);
+  projFB.setData(all);
+  const projRows = projFB.apply(all);
+  projFB.setCount(projRows.length, all.length);
+  if (!all.length)      { $("projList").innerHTML = emptyCard("No projects posted yet."); return; }
+  if (!projRows.length) { $("projList").innerHTML = emptyCard("No projects match these filters."); return; }
   $("projList").innerHTML = projRows.map((p) => `
     <div class="bg-white rounded-2xl shadow-sm p-4 ${p.archived_at ? "opacity-60" : ""}">
       <div class="flex flex-wrap items-start gap-3">
@@ -647,11 +663,12 @@ const TS_STATUS = {
 };
 
 function renderTimesheets() {
-  const tsRows = notArchived(cache.timesheets);
-  if (!tsRows.length) {
-    $("tsList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No timesheets yet.</div>`;
-    return;
-  }
+  const all = notArchived(cache.timesheets);
+  tsFB.setData(all);
+  const tsRows = tsFB.apply(all);
+  tsFB.setCount(tsRows.length, all.length);
+  if (!all.length)    { $("tsList").innerHTML = emptyCard("No timesheets yet."); return; }
+  if (!tsRows.length) { $("tsList").innerHTML = emptyCard("No timesheets match these filters."); return; }
   $("tsList").innerHTML = tsRows.map((t) => `
     <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4 ${t.archived_at ? "opacity-60" : ""}">
       <div class="min-w-0 flex-1">
@@ -677,11 +694,13 @@ function renderTimesheets() {
 }
 
 function renderInvoices() {
-  if (!cache.invoices.length) {
-    $("invList").innerHTML = `<div class="bg-white rounded-2xl p-8 text-center text-slate-400 text-sm">No invoices raised yet.</div>`;
-    return;
-  }
-  $("invList").innerHTML = cache.invoices.map((i) => {
+  const all = cache.invoices ?? [];
+  invFB.setData(all);
+  const rows = invFB.apply(all);
+  invFB.setCount(rows.length, all.length);
+  if (!all.length)  { $("invList").innerHTML = emptyCard("No invoices raised yet."); return; }
+  if (!rows.length) { $("invList").innerHTML = emptyCard("No invoices match these filters."); return; }
+  $("invList").innerHTML = rows.map((i) => {
     const advice = i.kind === "technician_payment_advice";
     return `
     <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-4">
@@ -896,6 +915,71 @@ document.addEventListener("click", async (event) => {
 
 $("refreshBtn").addEventListener("click", () => loadAll());
 $("showArchived").addEventListener("change", () => { renderTechnicians(); renderProjects(); renderTimesheets(); });
+
+// ---------- filters ----------
+// Client-side faceted search on the already-loaded caches. Smooth to a few
+// thousand rows; past that, push these same facet definitions server-side.
+// Each render function calls fb.setData()/apply()/setCount() (see above).
+const skillLabel = (s) => tagLabel(s);
+
+const techFB = createFilterBar($("techFilter"), {
+  search: { placeholder: "Search name, passport, phone, city…",
+            get: (t) => [t.full_name, t.passport_no, t.phone_number, t.location_city] },
+  facets: [
+    { key: "city",   label: "Location",     get: (t) => t.location_city, derive: true },
+    { key: "skill",  label: "Skill",        get: (t) => t.skills_array ?? [], multi: true, derive: true, optionLabel: skillLabel },
+    { key: "years",  label: "Experience",   get: (t) => t.years_experience, kind: "range", buckets: YEAR_BUCKETS },
+    { key: "status", label: "Status",       get: (t) => t.verified_status, derive: true },
+    { key: "avail",  label: "Availability", get: (t) => t.availability_status, derive: true },
+  ],
+  onChange: renderTechnicians,
+});
+
+const reqFB = createFilterBar($("reqFilter"), {
+  search: { placeholder: "Search role, project, plant, city…",
+            get: (r) => [r.role_title, r.project_title, r.client_name, r.location_city] },
+  facets: [
+    { key: "priced", label: "Pricing",   get: (r) => pricedLabel(r), options: ["Unpriced", "Priced"] },
+    { key: "status", label: "Status",    get: (r) => r.status, derive: true },
+    { key: "city",   label: "Location",  get: (r) => r.location_city, derive: true },
+    { key: "skill",  label: "Skill",     get: (r) => r.required_skills ?? [], multi: true, derive: true, optionLabel: skillLabel },
+    { key: "level",  label: "Min level", get: (r) => r.min_skill_level, options: ["L1", "L2", "L3", "L4"] },
+  ],
+  onChange: renderRequirements,
+});
+
+const projFB = createFilterBar($("projFilter"), {
+  search: { placeholder: "Search project, plant, city…",
+            get: (p) => [p.title, p.client_name, p.location_city] },
+  facets: [
+    { key: "status", label: "Status",   get: (p) => p.status, derive: true },
+    { key: "city",   label: "Location", get: (p) => p.location_city, derive: true },
+    { key: "client", label: "Plant",    get: (p) => p.client_name, derive: true },
+  ],
+  onChange: renderProjects,
+});
+
+const tsFB = createFilterBar($("tsFilter"), {
+  search: { placeholder: "Search project, technician…",
+            get: (t) => [t.project_title, t.technician_name] },
+  facets: [
+    { key: "status",  label: "Status",     get: (t) => t.status, derive: true },
+    { key: "project", label: "Project",    get: (t) => t.project_title, derive: true },
+    { key: "tech",    label: "Technician", get: (t) => t.technician_name, derive: true },
+  ],
+  onChange: renderTimesheets,
+});
+
+const invFB = createFilterBar($("invFilter"), {
+  search: { placeholder: "Search number, plant, project…",
+            get: (i) => [i.invoice_no, i.buyer_name, i.project_title] },
+  facets: [
+    { key: "kind",   label: "Type",   get: (i) => kindLabel(i), options: ["Tax invoice", "Payment advice"] },
+    { key: "status", label: "Status", get: (i) => i.status, derive: true },
+    { key: "fy",     label: "FY",     get: (i) => i.fin_year, derive: true },
+  ],
+  onChange: renderInvoices,
+});
 
 // ---------- load ----------
 

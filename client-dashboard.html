@@ -301,6 +301,7 @@
           <i class="fas fa-plus"></i> <span class="hidden sm:inline">New requirement</span>
         </button>
       </div>
+      <div id="projFilterClient" class="hidden"></div>
       <div id="projectList" class="space-y-3">
         <div class="bg-white rounded-2xl shadow-sm p-8 text-center text-slate-400 text-sm">
           <i class="fas fa-spinner fa-spin"></i> Loading…
@@ -484,6 +485,7 @@
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
 import { terms, documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=31";
+import { createFilterBar } from "/js/filterbar.js?v=1";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1132,29 +1134,50 @@ function projectCard(p) {
 // Views
 // ---------------------------------------------------------------------------
 
+let _clientProjects = [];
 async function loadProjects() {
   const list = $("projectList");
   try {
-    const rows = await projects.mine();
-
-    if (!rows.length) {
-      list.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-sm p-10 text-center">
-          <i class="fas fa-clipboard-list text-3xl text-slate-200"></i>
-          <p class="text-slate-500 mt-3 text-sm">No projects yet.</p>
-          <p class="text-slate-400 text-xs mt-1">Post your first requirement to see matched technicians.</p>
-        </div>`;
-      return;
-    }
-
-    list.innerHTML = rows.map(projectCard).join("");
-    await refreshReliability(rows);
+    _clientProjects = await projects.mine();
+    paintClientProjects();
+    await refreshReliability(_clientProjects);
   } catch (error) {
     RoboMonitor.captureException(error, { operation: "loadProjects" });
     list.innerHTML = `<div class="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-4">
       ${esc(error instanceof ApiError ? error.message : "Could not load projects.")}</div>`;
   }
 }
+
+function paintClientProjects() {
+  const list = $("projectList");
+  $("projFilterClient").classList.toggle("hidden", _clientProjects.length <= 3);   // no toolbar for a handful
+  if (!_clientProjects.length) {
+    list.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-sm p-10 text-center">
+        <i class="fas fa-clipboard-list text-3xl text-slate-200"></i>
+        <p class="text-slate-500 mt-3 text-sm">No projects yet.</p>
+        <p class="text-slate-400 text-xs mt-1">Post your first requirement to see matched technicians.</p>
+      </div>`;
+    return;
+  }
+  clientProjFB.setData(_clientProjects);
+  const rows = clientProjFB.apply(_clientProjects);
+  clientProjFB.setCount(rows.length, _clientProjects.length);
+  if (!rows.length) {
+    list.innerHTML = `<div class="bg-white rounded-2xl shadow-sm p-8 text-center text-slate-400 text-sm">No projects match these filters.</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(projectCard).join("");
+}
+
+const clientProjFB = createFilterBar($("projFilterClient"), {
+  search: { placeholder: "Search project, city…", get: (p) => [p.title, p.location_city] },
+  facets: [
+    { key: "status", label: "Status",   get: (p) => p.status, derive: true },
+    { key: "city",   label: "Location", get: (p) => p.location_city, derive: true },
+  ],
+  onChange: paintClientProjects,
+});
 
 let currentProjectId = null;
 async function openDetail(projectId) {

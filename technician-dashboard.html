@@ -143,6 +143,7 @@
       -->
       <div data-panel="roles" class="hidden">
         <div id="myAssignments" class="mb-5"></div>
+        <div id="roleFilter"></div>
         <div id="roleList" class="space-y-3"></div>
       </div>
 
@@ -162,6 +163,7 @@
 
 <script type="module">
 import { documents, workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=31";
+import { createFilterBar } from "/js/filterbar.js?v=1";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -519,11 +521,11 @@ const dayFmt = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short"
 const span = (a, b) => `${dayFmt.format(new Date(a))} – ${dayFmt.format(new Date(b))}`;
 
 async function renderRoles() {
-  let roles = [], mine = [];
+  let roles = [], mine = [], myRatings = [];
+  let ratingByAssignment = new Map();
   try {
-    let myRatings = [];
     [roles, mine, myRatings] = await Promise.all([assignments.openRoles(), assignments.mine(), ratings.mineAsProfessional().catch(() => [])]);
-    const ratingByAssignment = new Map(myRatings.map((r) => [r.assignment_id, r]));
+    ratingByAssignment = new Map(myRatings.map((r) => [r.assignment_id, r]));
   } catch (error) {
     RoboMonitor.captureException(error, { operation: "openRoles" });
   }
@@ -553,8 +555,16 @@ async function renderRoles() {
   const offers = roles.filter((r) => !held.has(r.requirement_id));
 
   $("roleCount").textContent = offers.length ? `(${offers.length})` : "";
+  _offers = offers;
+  paintOffers();
+}
 
-  if (!offers.length) {
+// Split out from renderRoles so the roles filter re-renders instantly without
+// a re-fetch. _offers is the full priced-and-unheld set; the toolbar filters it.
+let _offers = [];
+function paintOffers() {
+  $("roleFilter").classList.toggle("hidden", _offers.length <= 3);   // no toolbar for a handful
+  if (!_offers.length) {
     $("roleList").innerHTML = `
       <div class="bg-white rounded-2xl shadow-sm p-8 text-center">
         <i class="fas fa-inbox text-2xl text-slate-200"></i>
@@ -564,6 +574,13 @@ async function renderRoles() {
           it appears here and we message you on WhatsApp. You do not need to keep checking.
         </p>
       </div>`;
+    return;
+  }
+  roleFB.setData(_offers);
+  const offers = roleFB.apply(_offers);
+  roleFB.setCount(offers.length, _offers.length);
+  if (!offers.length) {
+    $("roleList").innerHTML = `<div class="bg-white rounded-2xl shadow-sm p-8 text-center text-slate-400 text-sm">No open roles match these filters.</div>`;
     return;
   }
 
@@ -611,6 +628,17 @@ async function renderRoles() {
       <p class="text-[11px] mt-2 hidden" data-accept-msg="${r.requirement_id}"></p>
     </div>`).join("");
 }
+
+const roleFB = createFilterBar($("roleFilter"), {
+  search: { placeholder: "Search role, project, city…", get: (r) => [r.role_title, r.project_title, r.location_city] },
+  facets: [
+    { key: "city",  label: "Location",  get: (r) => r.location_city, derive: true },
+    { key: "skill", label: "Skill",     get: (r) => r.required_skills ?? [], multi: true, derive: true, optionLabel: (t) => COMP.get(t)?.label ?? t.replace(/_/g, " ") },
+    { key: "shift", label: "Shift",     get: (r) => r.shift, derive: true },
+    { key: "level", label: "Min level", get: (r) => r.min_skill_level, options: ["L1", "L2", "L3", "L4"] },
+  ],
+  onChange: paintOffers,
+});
 
 $("roleList").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-accept]");
