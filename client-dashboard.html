@@ -242,9 +242,41 @@
           </select>
           <p class="text-xs text-slate-400 mt-1">Decides whether your invoice carries CGST+SGST or IGST.</p>
         </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">CIN / LLPIN <span class="text-slate-400 font-normal">(if a company/LLP)</span></label>
+          <input id="billCin" type="text" maxlength="25" placeholder="U29309KA2016PTC012345" autocapitalize="characters"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num uppercase">
+          <p class="text-xs text-slate-400 mt-1">Company Identity Number. Leave blank for a proprietorship.</p>
+        </div>
         <div class="sm:col-span-2">
           <label class="text-sm font-medium text-slate-700">Accounts email <span class="text-slate-400 font-normal">(invoices go here)</span></label>
           <input id="billEmail" type="email" placeholder="accounts@yourcompany.com"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+
+        <!-- Named authorised contact — buyer KYC and who we reach about a
+             deployed engineer. Person + phone are required (048 guard). -->
+        <div class="sm:col-span-2 pt-1">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Authorised contact at your plant</p>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">Contact person *</label>
+          <input id="billContactPerson" type="text" placeholder="Full name"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">Contact phone *</label>
+          <input id="billContactPhone" type="tel" placeholder="+91 98xxxxxxx"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none num">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">Designation / role</label>
+          <input id="billContactRole" type="text" placeholder="e.g. Maintenance Manager"
+                 class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">Department</label>
+          <input id="billDepartment" type="text" placeholder="e.g. Utilities / Instrumentation"
                  class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none">
         </div>
         <div id="billingMessage" class="hidden sm:col-span-2 text-sm rounded-xl p-3" role="status" aria-live="polite"></div>
@@ -311,8 +343,12 @@
         <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="titleInput"></p>
       </div>
 
-      <textarea id="descInput" rows="2" placeholder="Scope (optional)"
-                class="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none resize-y"></textarea>
+      <div>
+        <label class="text-sm font-medium text-slate-700">Statement of Work *</label>
+        <textarea id="descInput" rows="3" placeholder="What the engineer will do on site — tasks, equipment, deliverables, safety notes. This is the deployment brief and the basis of any dispute."
+                  class="mt-1.5 w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none resize-y"></textarea>
+        <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="descInput"></p>
+      </div>
 
       <div>
         <label class="text-sm font-medium text-slate-700">Skills required *</label>
@@ -369,6 +405,30 @@
         </div>
       </div>
 
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-sm font-medium text-slate-700">Working hours *</label>
+          <input id="hoursInput" type="text" placeholder="e.g. 09:00–18:00, Mon–Sat"
+                 class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none">
+          <p class="hidden mt-1.5 text-sm text-red-600" data-error-for="hoursInput"></p>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700">Shift</label>
+          <select id="shiftSelect"
+                  class="w-full mt-1 px-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none appearance-none bg-white">
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+            <option value="rotating">Rotating</option>
+            <option value="flexible">Flexible</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="flex items-start gap-2.5 p-3 bg-slate-50 rounded-xl cursor-pointer">
+        <input id="otInput" type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-600 shrink-0">
+        <span class="text-sm text-slate-600">Overtime expected — engineers may work beyond the hours above (billed per OT hour on top)</span>
+      </label>
+
       <div>
         <label class="text-sm font-medium text-slate-700">Your day rate per person (₹) *</label>
         <input id="dayRateInput" type="number" min="0" placeholder="5000"
@@ -423,7 +483,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { terms, documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=30";
+import { terms, documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=31";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -728,6 +788,10 @@ $("projectForm").addEventListener("submit", async (event) => {
   if (selectedSkills.size === 0) errors.skills = "Select at least one required skill.";
 
   if (!$("roleInput").value.trim()) errors.roleInput = "Name the role you need.";
+  // Scope of work and working hours are required — a job needs to be described,
+  // not just priced (matched by the 048 requirement guard).
+  if ($("descInput").value.trim().length < 10) errors.descInput = "Describe the scope of work (at least a sentence).";
+  if (!$("hoursInput").value.trim()) errors.hoursInput = "State the working hours.";
 
   const s0 = $("startInput").value, e0 = $("endInput").value;
   if (!s0) errors.startInput = "When does it start?";
@@ -740,7 +804,7 @@ $("projectForm").addEventListener("submit", async (event) => {
   const rate = Number($("dayRateInput").value);
   if (!rate || rate <= 0) errors.dayRateInput = "What will you pay per person, per day?";
 
-  ["titleInput", "citySelect", "daysInput", "budgetInput", "skills"]
+  ["titleInput", "citySelect", "daysInput", "budgetInput", "skills", "descInput", "hoursInput", "roleInput", "startInput", "endInput"]
     .forEach((f) => setFieldError(f, errors[f]));
 
   if (Object.keys(errors).length) {
@@ -775,17 +839,20 @@ $("projectForm").addEventListener("submit", async (event) => {
     // No payout rate is sent. The column grant would reject it, which is the
     // guarantee: a client cannot set, or discover, what we pay.
     await requirements.create({
-        minSkillLevel: $("minLevelSelect").value,
       projectId: project.id,
       roleTitle: $("roleInput").value.trim(),
       headcount,
       requiredSkills: [...selectedSkills],
-      minSkillLevel: "L2",
+      minSkillLevel: $("minLevelSelect").value,
       locationCity: $("citySelect").value,
       startsOn,
       endsOn,
+      shift: $("shiftSelect").value || null,
       clientDayRate: dayRate,
       notes: $("descInput").value.trim() || null,
+      scopeOfWork: $("descInput").value.trim(),
+      workingHours: $("hoursInput").value.trim(),
+      otExpected: $("otInput").checked,
     });
 
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Finding technicians…';
@@ -1502,6 +1569,11 @@ function paintBilling(b) {
     $("billGstin").value = b.gstin ?? "";
     $("billState").value = b.state_code;
     $("billEmail").value = b.contact_email ?? "";
+    $("billCin").value = b.cin ?? "";
+    $("billContactPerson").value = b.contact_person ?? "";
+    $("billContactPhone").value = b.contact_phone ?? "";
+    $("billContactRole").value = b.contact_role ?? "";
+    $("billDepartment").value = b.department ?? "";
   } else {
     card.classList.add("border-amber-300");
     card.classList.remove("border-slate-100");
@@ -1521,9 +1593,13 @@ $("billingSaveBtn").addEventListener("click", async () => {
   const legalName = $("billLegalName").value.trim();
   const address   = $("billAddress").value.trim();
   const stateCode = $("billState").value;
+  const contactPerson = $("billContactPerson").value.trim();
+  const contactPhone  = $("billContactPhone").value.trim();
   if (legalName.length < 2) { banner($("billingMessage"), "Enter the company's legal name.", "error"); return; }
   if (address.length < 6)   { banner($("billingMessage"), "Enter the registered address.", "error"); return; }
   if (!stateCode)           { banner($("billingMessage"), "Choose the state.", "error"); return; }
+  if (!contactPerson)       { banner($("billingMessage"), "Name a contact person at your plant.", "error"); return; }
+  if (!contactPhone)        { banner($("billingMessage"), "Add a contact phone number.", "error"); return; }
 
   const button = $("billingSaveBtn");
   button.disabled = true;
@@ -1532,6 +1608,10 @@ $("billingSaveBtn").addEventListener("click", async () => {
       legalName, address, stateCode,
       gstin: $("billGstin").value.trim() || null,
       contactEmail: $("billEmail").value.trim() || null,
+      cin: $("billCin").value.trim() || null,
+      contactPerson, contactPhone,
+      contactRole: $("billContactRole").value.trim() || null,
+      department: $("billDepartment").value.trim() || null,
     });
     $("billingMessage").classList.add("hidden");
     paintBilling(saved);

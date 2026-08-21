@@ -161,7 +161,7 @@
 </div>
 
 <script type="module">
-import { documents, workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=30";
+import { documents, workHistory, viewAs, availability, auth, profiles, passports, skills as skillsApi, technician, assignments, ratings, ApiError } from "/js/api.js?v=31";
 import { questionsFor } from "/js/questions.js?v=4";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -577,6 +577,7 @@ async function renderRoles() {
             &middot; ${esc(span(r.starts_on, r.ends_on))}
             &middot; ${r.duration_days} days
             ${r.shift ? ` &middot; ${esc(r.shift)} shift` : ""}
+            ${r.working_hours ? ` &middot; ${esc(r.working_hours)}` : ""}
           </p>
         </div>
         <div class="text-right shrink-0">
@@ -591,9 +592,11 @@ async function renderRoles() {
         <span class="px-2 py-0.5 rounded-md bg-slate-50 text-[11px] text-slate-500">Needs ${esc(r.min_skill_level)}</span>
         ${r.travel_required ? `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-[11px] text-amber-700">Travel</span>` : ""}
         ${r.accommodation_provided ? `<span class="px-2 py-0.5 rounded-md bg-green-50 text-[11px] text-green-700">Stay provided</span>` : ""}
+        ${r.ot_expected ? `<span class="px-2 py-0.5 rounded-md bg-purple-50 text-[11px] text-purple-700">OT expected</span>` : ""}
       </div>
 
-      ${r.notes ? `<p class="text-xs text-slate-500 mt-2">${esc(r.notes)}</p>` : ""}
+      ${r.scope_of_work ? `<p class="text-xs text-slate-600 mt-2"><span class="font-semibold text-slate-500">Scope:</span> ${esc(r.scope_of_work)}</p>`
+        : (r.notes ? `<p class="text-xs text-slate-500 mt-2">${esc(r.notes)}</p>` : "")}
 
       <div class="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-slate-100">
         <span class="text-xs text-slate-500 num">

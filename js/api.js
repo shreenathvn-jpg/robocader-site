@@ -1122,7 +1122,7 @@ const REQUIREMENT_COLUMNS =
   "id, project_id, role_title, headcount, required_skills, preferred_skills, " +
   "min_skill_level, min_years, location_city, starts_on, ends_on, shift, " +
   "client_day_rate, client_ot_hour_rate, travel_required, " +
-  "accommodation_provided, notes, status, created_at";
+  "accommodation_provided, notes, scope_of_work, working_hours, ot_expected, status, created_at";
 
 export const requirements = {
   /** Roles on one project, as the owning client sees them. */
@@ -1138,11 +1138,12 @@ export const requirements = {
 
   /**
    * Creates a role. The client states what THEY will pay; the payout is set by
-   * InChi afterwards through price_requirement(). Sending a payout rate here
-   * would be rejected by the column grant, which is t    if (VIEW_BUNDLE) readOnly("create");
-he point.
+   * InChi afterwards through price_requirement(). No payout rate is sent — the
+   * column grant does not expose technician_day_rate to the client, which is
+   * the point. Scope of work and working hours are required (048 guard).
    */
   async create(fields) {
+    if (VIEW_BUNDLE) readOnly("requirements.create");
     const { data, error } = await supabase
       .from("project_requirements")
       .insert({
@@ -1161,6 +1162,9 @@ he point.
         travel_required: Boolean(fields.travelRequired),
         accommodation_provided: Boolean(fields.accommodationProvided),
         notes: fields.notes ?? null,
+        scope_of_work: fields.scopeOfWork ?? null,
+        working_hours: fields.workingHours ?? null,
+        ot_expected: Boolean(fields.otExpected),
       })
       .select(REQUIREMENT_COLUMNS)
       .single();
@@ -1409,7 +1413,7 @@ export const billing = {
     if (!user) return null;
     const { data, error } = await supabase
       .from("client_billing")
-      .select("legal_name, billing_address, state_code, state_name, gstin, contact_email, updated_at")
+      .select("legal_name, billing_address, state_code, state_name, gstin, contact_email, cin, contact_person, contact_role, department, contact_phone, updated_at")
       .eq("client_id", user.id)
       .maybeSingle();
     if (error) fail(error, "billing.mine");
@@ -1422,7 +1426,8 @@ export const billing = {
    * must agree with the chosen state — a mismatch here becomes a wrong tax
    * split on every invoice.
    */
-  async save({ legalName, address, stateCode, gstin = null, contactEmail = null }) {
+  async save({ legalName, address, stateCode, gstin = null, contactEmail = null,
+               cin = null, contactPerson = null, contactRole = null, department = null, contactPhone = null }) {
     const user = await auth.currentUser();
     if (!user) throw new ApiError("You are not signed in.", { operation: "billing.save" });
 
@@ -1438,6 +1443,17 @@ export const billing = {
       throw new ApiError(`This GSTIN belongs to ${GST_STATES[clean.slice(0, 2)] ?? "another state"}, but you chose ${stateName}.`, { operation: "billing.save" });
     }
 
+    // Buyer KYC: a named human we can reach is required (matched by the DB guard
+    // in migration 048). CIN is optional — proprietorships and many LLPs have none.
+    const person = contactPerson?.trim() || null;
+    const phone = contactPhone?.trim() || null;
+    if (!person) throw new ApiError("Add the name of a contact person at your plant.", { operation: "billing.save" });
+    if (!phone) throw new ApiError("Add a contact phone number for your plant.", { operation: "billing.save" });
+    const cleanCin = cin ? cin.trim().toUpperCase() : null;
+    if (cleanCin && (cleanCin.length < 5 || cleanCin.length > 25)) {
+      throw new ApiError("That CIN does not look right (a company CIN is 21 characters).", { operation: "billing.save" });
+    }
+
     const { error } = await supabase.from("client_billing").upsert({
       client_id: user.id,
       legal_name: legalName.trim(),
@@ -1446,6 +1462,11 @@ export const billing = {
       state_name: stateName,
       gstin: clean,
       contact_email: contactEmail?.trim() || null,
+      cin: cleanCin,
+      contact_person: person,
+      contact_role: contactRole?.trim() || null,
+      department: department?.trim() || null,
+      contact_phone: phone,
     }, { onConflict: "client_id" });
     if (error) fail(error, "billing.save");
     return this.mine();

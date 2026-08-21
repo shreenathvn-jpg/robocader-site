@@ -246,7 +246,7 @@
 </div>
 
 <script type="module">
-import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=30";
+import { auth, profiles, admin, requirements, ApiError } from "/js/api.js?v=31";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({ dsn: cfg.SENTRY_DSN, environment: cfg.SENTRY_ENVIRONMENT, release: cfg.RELEASE, surface: "admin" });
@@ -572,6 +572,8 @@ function renderRequirements() {
           </p>
           <p class="text-sm text-slate-500 mt-0.5">${esc(r.project_title)} · ${esc(r.client_name)} · ${esc(r.location_city ?? "—")} · ${esc(r.starts_on)} → ${esc(r.ends_on)} · ${r.headcount} seat${r.headcount === 1 ? "" : "s"}, ${r.filled} filled</p>
           <p class="text-xs text-slate-400 mt-1">Skills: ${(r.required_skills ?? []).map(esc).join(", ") || "—"} · min ${esc(r.min_skill_level ?? "L2")}</p>
+          ${(r.working_hours || r.shift || r.ot_expected) ? `<p class="text-xs text-slate-400 mt-1">Hours: ${esc(r.working_hours ?? "—")}${r.shift ? ` · ${esc(r.shift)} shift` : ""}${r.ot_expected ? ` · <span class="text-purple-600 font-medium">OT expected</span>` : ""}</p>` : ""}
+          ${r.scope_of_work ? `<p class="text-xs text-slate-500 mt-1"><span class="font-semibold text-slate-400">Scope:</span> ${esc(r.scope_of_work)}</p>` : ""}
         </div>
         <div class="text-right shrink-0">
           <p class="text-[11px] uppercase tracking-wide text-slate-400">Client pays / day</p>
