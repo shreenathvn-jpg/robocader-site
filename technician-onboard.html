@@ -1524,7 +1524,15 @@ $("saveWorkBtn").addEventListener("click", async () => {
       skillsUsed: [...state.skills.keys()]
     };
     if (state.profileExists) {
-      await workHistory.add(entry);
+      try {
+        await workHistory.add(entry);
+      } catch (e) {
+        // If the profile row isn't actually there yet (stale profileExists /
+        // mid-onboarding), the insert FK-fails. Never drop the entry — queue it
+        // to be written with the passport on save (F22).
+        if (/foreign key/i.test(e?.message ?? "")) state.pendingWork.push(entry);
+        else throw e;
+      }
     } else {
       state.pendingWork.push(entry);   // written with the passport, below
     }
@@ -1799,9 +1807,13 @@ function showPassport() {
 }
 
 $("editPassportBtn").addEventListener("click", () => {
+  // Re-enter form mode through enterFormMode, not a bare div toggle — it
+  // reloads the profile and sets state.profileExists (and re-hydrates the star,
+  // phone, etc.). The old toggle skipped that, so on this path the flag went
+  // stale and "Add a plant/project" failed until a full reload (F22, same
+  // class as F2).
   $("passportView").classList.add("hidden");
-  $("profileForm").classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  enterFormMode();
 });
 
 // ---------------------------------------------------------------------------
