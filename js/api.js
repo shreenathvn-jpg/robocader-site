@@ -39,6 +39,11 @@ const PROJECT_COLUMNS =
 const MILESTONE_COLUMNS =
   "id, project_id, technician_id, milestone_stage, escrow_status, work_status, " +
   "amount, released_at, dispute_reason, updated_at";
+// amount is the CLIENT bill (051 revokes it from the base table). A technician
+// reads milestones for progress only — stage and status, never the money.
+const MILESTONE_COLUMNS_NO_AMOUNT =
+  "id, project_id, technician_id, milestone_stage, escrow_status, work_status, " +
+  "released_at, dispute_reason, updated_at";
 
 const PASSPORT_COLUMNS =
   "technician_id, passport_no, verified_status, skills_array, primary_skill_tag, certificate_url, " +
@@ -827,11 +832,15 @@ export const matches = {
 
 export const milestones = {
   async forProject(projectId) {
-    const { data, error } = await supabase
-      .from("milestones")
-      .select(MILESTONE_COLUMNS)      // never "*" — most columns are revoked
-      .eq("project_id", projectId);
-
+    // The owning client reads its escrow WITH amounts through client_escrow
+    // (owner-rights, 051). amount is not readable on the milestones base table.
+    // Falls back to the base table if 051 (which creates client_escrow) is not
+    // applied yet, so this frontend is safe to ship BEFORE the migration.
+    let res = await supabase.from("client_escrow").select(MILESTONE_COLUMNS).eq("project_id", projectId);
+    if (res.error && (res.error.code === "PGRST205" || /client_escrow/.test(res.error.message ?? ""))) {
+      res = await supabase.from("milestones").select(MILESTONE_COLUMNS).eq("project_id", projectId);
+    }
+    const { data, error } = res;
     if (error) fail(error, "milestones.forProject");
 
     const ORDER = { arrival_30: 0, mid_project_40: 1, completion_30: 2 };
@@ -844,7 +853,7 @@ export const milestones = {
 
     const { data, error } = await supabase
       .from("milestones")
-      .select(`${MILESTONE_COLUMNS}, projects(title, location_city)`)
+      .select(`${MILESTONE_COLUMNS_NO_AMOUNT}, projects(title, location_city)`)
       .eq("technician_id", user.id)
       .order("updated_at", { ascending: false });
 
