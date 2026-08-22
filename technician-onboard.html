@@ -1302,13 +1302,9 @@ async function enterFormMode() {
       if (profile.location_city && CITIES.includes(profile.location_city)) {
         $("citySelect").value = profile.location_city;
       }
-      if (false && profile.daily_rate) {
-        const rate = Number(profile.daily_rate);
-        // An existing rate that is not one of the presets goes into "Other".
-        if (RATES.includes(rate)) { state.rate = rate; }
-        else { state.rate = "custom"; if ($("rateInput")) $("rateInput").value = rate; }
-        renderRates();
-      }
+      // Professionals do not set a rate — payout is governed by the rate card,
+      // and the admin owns profile.daily_rate. Onboarding neither shows nor
+      // touches it (create_my_profile preserves it on a null; migration 050).
       $("availabilityToggle").checked = profile.availability_status !== false;
     }
 
@@ -1694,10 +1690,13 @@ $("saveBtn").addEventListener("click", async () => {
     const primary = l4
       ?? (chosenSkills().includes(state.primary) ? state.primary : chosenSkills()[0] ?? null);
     if ($("emgName").value.trim() || $("emgPhone").value.trim()) {
+      // Do NOT swallow this. A failure here means the emergency contact was
+      // not saved, and the technician would be blocked at their first accept
+      // with no idea why (audit M4). Let it surface through the outer catch.
       await profiles.updateSelf({
         emergency_contact_name: $("emgName").value.trim() || null,
         emergency_contact_phone: $("emgPhone").value.trim() || null,
-      }).catch((e) => RoboMonitor.captureException(e, { operation: "emergencyContact" }));
+      });
     }
 
     await passports.save({
@@ -1705,7 +1704,11 @@ $("saveBtn").addEventListener("click", async () => {
       primarySkillTag: primary,
     });
 
-    await terms.accept(terms.TECH).catch(() => {});
+    // terms.accept() already ignores an "already accepted" duplicate and
+    // surfaces any real failure — so it must NOT be swallowed here, or a
+    // technician whose acceptance did not record is blocked from every role
+    // later with no explanation (audit M4).
+    await terms.accept(terms.TECH);
     localStorage.removeItem(DRAFT_KEY);
 
     button.disabled = false;
