@@ -25,7 +25,7 @@
 </div>
 
 <script type="module">
-import { supabase } from "/js/api.js?v=31";
+import { supabase } from "/js/api.js?v=32";
 const params = new URLSearchParams(location.search);
 const sheet = document.getElementById("sheet");
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));

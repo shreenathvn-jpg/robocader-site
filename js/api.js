@@ -41,7 +41,7 @@ const MILESTONE_COLUMNS =
   "amount, released_at, dispute_reason, updated_at";
 
 const PASSPORT_COLUMNS =
-  "technician_id, passport_no, verified_status, skills_array, certificate_url, " +
+  "technician_id, passport_no, verified_status, skills_array, primary_skill_tag, certificate_url, " +
   "video_passport_url, years_experience, updated_at";
 
 // ---------------------------------------------------------------------------
@@ -63,16 +63,26 @@ function fail(error, operation) {
   window.RoboMonitor?.captureSupabaseError?.(error, operation);
 
   let message = error.message ?? "Something went wrong";
+  const raw = error.message ?? "";
 
-  if (error.code === "42501" || error.code === "PGRST301") {
+  // Business guards RAISE their own human-readable message (often with SQLSTATE
+  // 42501 for an RLS refusal, or a check_violation for a guard trigger). Only
+  // replace the text when it is a RAW Postgres refusal — "permission denied
+  // for <object>" or "... violates check constraint ..." — never when the
+  // database has already said something a person can act on. (Audit C3.)
+  const isRawPermission = /permission denied for /i.test(raw);
+  const isRawCheck = /violates check constraint/i.test(raw);
+
+  if ((error.code === "42501" || error.code === "PGRST301") && (isRawPermission || !raw)) {
     message = "You do not have permission to do that.";
   } else if (error.code === "23505") {
     message = "That record already exists.";
-  } else if (error.code === "23514") {
+  } else if (error.code === "23514" && isRawCheck) {
     message = "Some details were outside the allowed range. Please check and try again.";
-  } else if (error.message?.includes("Failed to fetch")) {
+  } else if (raw.includes("Failed to fetch")) {
     message = "Cannot reach the server. Check your connection and try again.";
   }
+  // Otherwise `message` stays as the database's own words — the guard speaks.
 
   throw new ApiError(message, { code: error.code, hint: error.hint, operation });
 }
@@ -203,12 +213,23 @@ export const profiles = {
     const user = await auth.currentUser();
     if (!user) return null;
 
+    // Own profile through a definer RPC so the identity columns (full_name,
+    // daily_rate, GPS) can be revoked from `authenticated` on the base table
+    // — otherwise any signed-in user could read the whole pool's names, rates
+    // and GPS directly (audit C1). Falls back to a scoped select if 049 (which
+    // creates my_profile) is not yet applied, so this frontend is safe to ship
+    // BEFORE the migration.
+    const rpc = await supabase.rpc("my_profile");
+    if (!rpc.error) return rpc.data ?? null;
+    const notDeployed = rpc.error.code === "PGRST202"
+      || /my_profile.*does not exist/i.test(rpc.error.message ?? "");
+    if (!notDeployed) fail(rpc.error, "profiles.me");
+
     const { data, error } = await supabase
       .from("profiles")
       .select(PROFILE_COLUMNS)          // never "*"
       .eq("id", user.id)
       .maybeSingle();
-
     if (error) fail(error, "profiles.me");
     return data;
   },
@@ -1212,7 +1233,9 @@ export const assignments = {
       p_requirement_id: requirementId,
     });
     if (error) fail(error, "assignments.accept");
-    return data;
+    // 049 narrows the return to a bare uuid so the composite assignments row
+    // (which carries the client rate) never reaches the browser. Tolerate both.
+    return data?.id ?? data;
   },
 
   /**
