@@ -53,18 +53,32 @@
   // Scrubbing — mirrors api/lib/sentry.js. Keep the three copies in step.
   // -------------------------------------------------------------------------
 
+  // ORDER MATTERS: a GSTIN contains a valid PAN at characters 3-12, so the
+  // GSTIN rule must run before the PAN rule or PAN would shred it. Mirrors
+  // api/lib/sentry.js; the Aadhaar rule is rewritten WITHOUT a lookbehind
+  // because an older Safari that can't parse `(?<! )` would throw at load and
+  // take every page down with it (monitoring.js runs on all of them).
   var REDACTIONS = [
     [/\+\d{8,15}\b/g, "[phone]"],
     [/\b[6-9]\d{9}\b/g, "[phone]"],
     [/\b[\w.+-]+@[\w-]+\.[\w.]+\b/g, "[email]"],
     [/\beyJ[\w-]*\.[\w-]*\.[\w-]*/g, "[jwt]"],
     [/\bBearer\s+[\w\-._~+/]+=*/gi, "Bearer [redacted]"],
+    [/\b(sk|pk|api[_-]?key|token|secret|password)["'\s:=]+[\w\-._~+/]{8,}/gi, "$1=[redacted]"],
+    [/\bEAA[\w]{20,}/g, "[meta_token]"],
+    [/\bAIza[\w-]{20,}/g, "[google_key]"],
     [/\b\d{4,8}\b(?=\s*(otp|code))/gi, "[otp]"],
-    [/\bAIza[\w-]{20,}/g, "[google_key]"]
+    // ---- Indian financial identifiers (GST invoices, TDS, payouts) ----
+    [/\b\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b/g, "[gstin]"],
+    [/\b[A-Z]{5}\d{4}[A-Z]\b/g, "[pan]"],
+    [/\b[A-Z]{4}0[A-Z0-9]{6}\b/g, "[ifsc]"],
+    // Aadhaar: 12 digits (optionally spaced), never starting 0/1, not glued to
+    // a word char or hyphen (so it never eats a UUID's trailing digits).
+    [/(^|[^\w-])([2-9]\d{3}\s?\d{4}\s?\d{4})(?![\w-])/g, "$1[aadhaar]"]
   ];
 
   var SECRET_KEYS =
-    /^(authorization|apikey|api_key|password|secret|token|phone|phone_number|otp|full_name)$/i;
+    /^(authorization|apikey|api_key|service_role|password|secret|token|otp|phone|phone_number|wa_id|from|full_name|pan|gstin|ifsc|aadhaar|account_number|bank_account|upi|upi_id|beneficiary|net_payable|tds_amount)$/i;
 
   function scrubString(value) {
     var output = String(value);
