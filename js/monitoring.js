@@ -61,6 +61,10 @@
   var REDACTIONS = [
     [/\+\d{8,15}\b/g, "[phone]"],
     [/\b[6-9]\d{9}\b/g, "[phone]"],
+    // Separator-tolerant Indian mobile: optional leading 0, one space/hyphen
+    // between the 5+5 halves ("98765 43210", "098765-43210"). Capture-group
+    // form (no lookbehind) so it parses on every browser (audit M5).
+    [/(^|[^\d])(0?[6-9]\d{4}[\s-]\d{5})(?!\d)/g, "$1[phone]"],
     [/\b[\w.+-]+@[\w-]+\.[\w.]+\b/g, "[email]"],
     [/\beyJ[\w-]*\.[\w-]*\.[\w-]*/g, "[jwt]"],
     [/\bBearer\s+[\w\-._~+/]+=*/gi, "Bearer [redacted]"],
