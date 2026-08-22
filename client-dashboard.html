@@ -485,7 +485,7 @@
 <script type="module">
 // A scroll over a focused number field must not change its value (6000 → 5999).
 document.addEventListener("wheel", () => { if (document.activeElement?.type === "number") document.activeElement.blur(); }, { passive: true });
-import { terms, documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=33";
+import { terms, documents, viewAs, auth, profiles, projects, requirements, assignments, ratings, matches, milestones, passports, workHistory, billing, GST_STATES, formatSpan, clientReliabilityIndex, ApiError } from "/js/api.js?v=34";
 import { createFilterBar } from "/js/filterbar.js?v=1";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
@@ -678,7 +678,14 @@ $("submitAuthBtn").addEventListener("click", async () => {
 
   try {
     if (authMode === "signup") {
-      const { needsConfirmation } = await auth.signUpWithPassword(email, password, window.location.href, "client");
+      const { needsConfirmation, alreadyRegistered } = await auth.signUpWithPassword(email, password, window.location.href, "client");
+      if (alreadyRegistered) {
+        // No link will arrive — the address already has an account.
+        banner($("authMessage"),
+          `${email} is already registered. Switch to Sign in, or use “Forgot password” if you don’t remember it.`, "error");
+        setAuthMode("signin");
+        return;
+      }
       if (needsConfirmation) {
         banner($("authMessage"),
           `Account created. Check ${email} for a confirmation link, then sign in.`, "success");

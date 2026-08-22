@@ -557,7 +557,7 @@
 </div>
 
 <script type="module">
-import { supabase, terms, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=33";
+import { supabase, terms, auth, profiles, passports, skills as skillsApi, workHistory, formatSpan, ApiError } from "/js/api.js?v=34";
 
 const cfg = window.ROBOCADER_CONFIG ?? {};
 RoboMonitor.init({
@@ -1181,7 +1181,14 @@ $("submitAuthBtn").addEventListener("click", async () => {
         return;
       }
 
-      const { needsConfirmation } = await auth.signUpWithPassword(email, password, window.location.href, "technician");
+      const { needsConfirmation, alreadyRegistered } = await auth.signUpWithPassword(email, password, window.location.href, "technician");
+      if (alreadyRegistered) {
+        // No link is coming — the address already has an account. Point them at
+        // sign-in / reset instead of an inbox that will stay empty.
+        banner($("authMessage"),
+          "This email is already registered. Switch to Sign in, or use “Forgot password” if you don’t remember it.", "error");
+        return;
+      }
       if (needsConfirmation) {
         // A dedicated state, not the login form again. The person has done
         // their part; the next move is in their inbox.

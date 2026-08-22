@@ -168,7 +168,21 @@ export const auth = {
       },
     });
     if (error) fail(error, "auth.signUpWithPassword");
-    return { user: data.user, session: data.session, needsConfirmation: !data.session };
+    // Supabase does not error when the email already belongs to a confirmed
+    // account — to avoid confirming to a stranger that the address exists it
+    // returns a decoy user with an EMPTY identities array and sends no link.
+    // Detect that so the UI can say "already registered, sign in" instead of
+    // "check your email" for a link that will never arrive.
+    const alreadyRegistered =
+      !data.session &&
+      Array.isArray(data.user?.identities) &&
+      data.user.identities.length === 0;
+    return {
+      user: data.user,
+      session: data.session,
+      needsConfirmation: !data.session && !alreadyRegistered,
+      alreadyRegistered,
+    };
   },
 
   async sendPasswordReset(email, redirectTo) {
