@@ -328,13 +328,16 @@ supabase.auth.onAuthStateChange(async (event, session) => {
 
     var esc = function (t) { return String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); };
 
+    // A reference list, NOT links. Clicking a skill used to jump into "Build
+    // your Skill Passport", which made no sense — the section just tells a
+    // visitor what we cover. The dedicated CTA below is the one call to action.
     list.innerHTML = competencies.map(function (c) {
-      return '<a href="/technician-onboard.html" class="group flex items-baseline gap-3 py-4 border-b border-slate-100">' +
+      return '<div class="flex items-baseline gap-3 py-4 border-b border-slate-100">' +
                '<span class="text-[13px] text-slate-300 num w-5 shrink-0 pt-0.5">' +
                  String(c.order).padStart(2, "0") +
                '</span>' +
                '<span class="min-w-0">' +
-                 '<span class="block text-[15px] text-slate-800 group-hover:text-slate-950 transition">' +
+                 '<span class="block text-[15px] text-slate-800">' +
                    esc(c.label) +
                  '</span>' +
                  (c.description
@@ -342,7 +345,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
                        esc(c.description) + '</span>'
                    : "") +
                '</span>' +
-             '</a>';
+             '</div>';
     }).join("");
   })();
 </script>
